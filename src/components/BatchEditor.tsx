@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { saveBatch } from '../lib/batches.ts'
-import { parseCsvFile } from '../lib/csv.ts'
-import { fetchTemplates } from '../lib/templates.ts'
-import type { Batch, TemplateInfo } from '../lib/types.ts'
-import RowGrid from './RowGrid.tsx'
+import type { BatchIssuerAdapter } from '../adapter'
+import { saveBatch } from '../lib/batches'
+import { parseCsvFile } from '../lib/csv'
+import { fetchTemplates } from '../lib/templates'
+import type { Batch, TemplateInfo } from '../lib/types'
+import RowGrid from './RowGrid'
 
 const inputClass =
   'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none'
 
 export default function BatchEditor({
+  adapter,
   initialBatch,
   onDone,
 }: {
+  adapter: BatchIssuerAdapter
   initialBatch: Batch
   onDone: () => void
 }) {
@@ -23,11 +26,11 @@ export default function BatchEditor({
   const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    fetchTemplates().then(setTemplates, (err) => {
+    fetchTemplates(adapter.templatesApiBase).then(setTemplates, (err) => {
       setTemplates([])
       setError(err instanceof Error ? err.message : 'Failed to load templates.')
     })
-  }, [])
+  }, [adapter])
 
   const selectedTemplate = useMemo(
     () => templates?.find(({ id }) => id === batch.templateId) ?? null,
@@ -70,7 +73,8 @@ export default function BatchEditor({
     setSaving(true)
     setError(null)
     try {
-      const stored = await saveBatch(batch)
+      // The first save creates and registers the batch's own WAS space.
+      const stored = await saveBatch(adapter, batch)
       setBatch(stored)
       setSavedAt(stored.updatedAt)
     } catch (err) {
@@ -116,6 +120,10 @@ export default function BatchEditor({
       </div>
 
       {error && <p className="mb-4 rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+
+      {batch.spaceUrl && (
+        <p className="mb-4 text-xs text-slate-400">Batch space: {batch.spaceUrl}</p>
+      )}
 
       <section className="mb-8 grid gap-4 rounded-xl border border-slate-200 bg-white p-6 sm:grid-cols-2">
         <label className="block">

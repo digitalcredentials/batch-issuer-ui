@@ -1,29 +1,37 @@
 {
-  "name": "batch-issuer-ui",
-  "private": true,
-  "version": "0.0.0",
+  "name": "@digitalcredentials/batch-issuer-ui",
+  "version": "0.1.0",
+  "description": "Batch credential issuer panel for the Learner Credential Wallet",
   "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@interop/was-client": ">=0.41.0",
+    "react": ">=19",
+    "react-dom": ">=19"
   },
   "dependencies": {
-    "@interop/ed25519-signature": "^7.2.1",
-    "@interop/ed25519-verification-key": "^8.0.4",
-    "@interop/ezcap": "^7.4.3",
-    "@interop/was-client": "^0.41.0",
-    "@tailwindcss/vite": "^4.3.3",
-    "papaparse": "^5.4.1",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "tailwindcss": "^4.3.3"
+    "papaparse": "^5.4.1"
   },
   "devDependencies": {
+    "@interop/was-client": "^0.41.0",
     "@types/papaparse": "^5.3.14",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
   }

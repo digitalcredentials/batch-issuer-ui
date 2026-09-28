@@ -1,24 +1,35 @@
 import { useEffect, useState } from 'react'
-import { deleteBatch, listBatches } from '../lib/batches.ts'
-import { newBatch, type Batch } from '../lib/types.ts'
+import type { BatchIssuerAdapter } from '../adapter'
+import { deleteBatch, listBatches } from '../lib/batches'
+import { newBatch, type Batch } from '../lib/types'
 
-export default function BatchListPage({ onEdit }: { onEdit: (batch: Batch) => void }) {
+export default function BatchListPage({
+  adapter,
+  onEdit,
+}: {
+  adapter: BatchIssuerAdapter
+  onEdit: (batch: Batch) => void
+}) {
   const [batches, setBatches] = useState<Batch[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    listBatches().then(setBatches, (err) => {
+    listBatches(adapter).then(setBatches, (err) => {
       setError(err instanceof Error ? err.message : 'Failed to load batches.')
       setBatches([])
     })
-  }, [])
+  }, [adapter])
 
   async function handleDelete(batch: Batch) {
-    if (!confirm(`Delete batch "${batch.name || batch.id}"? This cannot be undone.`)) {
+    if (
+      !confirm(
+        `Delete batch "${batch.name || batch.id}"? This deletes the batch's whole storage space and cannot be undone.`
+      )
+    ) {
       return
     }
     try {
-      await deleteBatch(batch.id)
+      await deleteBatch(adapter, batch)
       setBatches((current) => current?.filter(({ id }) => id !== batch.id) ?? null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete batch.')
@@ -44,7 +55,8 @@ export default function BatchListPage({ onEdit }: { onEdit: (batch: Batch) => vo
         <p className="text-sm text-slate-500">Loading batches…</p>
       ) : batches.length === 0 ? (
         <p className="text-sm text-slate-500">
-          No batches yet. Create one to issue credentials to a list of recipients.
+          No batches yet. Create one to issue credentials to a list of recipients. Each
+          batch gets its own storage space.
         </p>
       ) : (
         <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">

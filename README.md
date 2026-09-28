@@ -1,11 +1,13 @@
 # batch-issuer-ui
 
-A standalone web app that lets a wallet owner issue a batch of verifiable
-credentials — for example, a conference organizer issuing an attendance
-credential to every attendee. It plugs into the Learner Credential Wallet
-ecosystem: sign in with the same wallet account (email + password, deriving the
-same did:key), and batches are stored in the account's Wallet Attached Storage
-space, in a `batches` collection.
+A React panel for the Learner Credential Wallet that lets a wallet owner issue
+a batch of verifiable credentials — for example, a conference organizer issuing
+an attendance credential to every attendee. It ships as a component library
+(`@digitalcredentials/batch-issuer-ui`) that
+[lcw-front-end](../lcw-front-end) mounts as a screen, reusing the wallet's own
+session: the wallet supplies its authenticated `WasClient` and its back end's
+`/spaces` API through an adapter, so this package knows nothing about login,
+localStorage, or env vars.
 
 ## What it does
 
@@ -17,29 +19,41 @@ space, in a `batches` collection.
   parsed into JSON and shown as an editable grid: edit any cell, delete rows,
   insert rows anywhere, or append new ones. Required template columns missing
   from the CSV are flagged.
-- **Persist batches** to the owner's WAS space via `@interop/was-client`
-  (`batches/{batch-id}.json`), so they follow the account across devices.
+- **One WAS space per batch**: the first save creates a brand-new space
+  (controlled by the wallet's DID) through the wallet back end's
+  `POST /spaces`, registered with `type: 'batch'` in the spaces registry, and
+  writes the batch document to `batch/batch.json` in that space. The batch
+  list is the registry's batch-type spaces; deleting a batch deletes its whole
+  space (registry row + bucket).
 
-Populating and signing the credentials when holders collect them happens
-elsewhere: the credential-templates API's `POST /templates/{id}` fills a
-template per recipient.
+## Usage
 
-## Configure
+```tsx
+import { BatchIssuerPanel, type BatchIssuerAdapter } from '@digitalcredentials/batch-issuer-ui'
 
-Copy `.env.example` to `.env`:
+const adapter: BatchIssuerAdapter = {
+  getSession,          // () => Promise<{ client: WasClient } | null>
+  spaces: { create, list, remove },  // the wallet back end's /spaces API
+  templatesApiBase,    // credential-templates API base URL
+  onUnauthorized,      // e.g. clear the session and bounce to /login
+}
 
-- `VITE_LOGIN_API_BASE` — the lcw-back-end base URL (`POST {base}/login`).
-- `VITE_TEMPLATES_API_BASE` — the credential-templates API base URL.
+<BatchIssuerPanel adapter={adapter} />
+```
+
+Styling is Tailwind utility classes compiled by the consumer. In a Tailwind v4
+app, add to the main stylesheet:
+
+```css
+@source "../node_modules/@digitalcredentials/batch-issuer-ui/dist";
+```
 
 ## Develop
 
 ```bash
 npm install
-npm run dev       # http://localhost:5173
-npm run build     # type-check + production build to dist/
+npm run build       # vite lib build + d.ts to dist/
+npm run typecheck
 ```
 
-The login flow mirrors lcw-front-end: SHA-256(password) seeds an Ed25519 key
-pair, a zcap-signed `POST /login` verifies it against the DID registered for
-the email, and the returned space URL plus the exported key pair are kept in
-localStorage for signing WAS requests during the session.
+`react`, `react-dom`, and `@interop/was-client` are peer dependencies.

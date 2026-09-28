@@ -1,76 +1,99 @@
-import type { Batch } from './types.ts'
-import { getSessionWASClient } from './was.ts'
+import type { BatchIssuerAdapter } from '../adapter'
+import type { Batch } from './types'
 
-// Batches live in the owner's WAS space, one JSON resource per batch in the
-// `batches` collection.
-const COLLECTION_ID = 'batches'
+// Every batch lives in its own WAS space, registered with type 'batch'. The
+// batch document itself is one JSON resource inside that space.
+const COLLECTION_ID = 'batch'
+const RESOURCE_ID = 'batch.json'
 
-async function getCollection() {
-  const session = await getSessionWASClient()
+// Splits a space URL into the WAS server base URL and the space id.
+export function parseSpaceUrl(spaceUrl: string): { serverUrl: string; spaceId: string } | null {
+  const match = spaceUrl.match(/^(.+)\/space\/([^/?#]+)$/)
+  return match ? { serverUrl: match[1], spaceId: match[2] } : null
+}
+
+async function getClient(adapter: BatchIssuerAdapter) {
+  const session = await adapter.getSession()
   if (!session) {
+    adapter.onUnauthorized()
     throw new Error('Not logged in.')
   }
-  return session.client.space(session.spaceId).collection(COLLECTION_ID)
+  return session.client
 }
 
-function resourceId(batchId: string): string {
-  return `${batchId}.json`
+function batchCollection(
+  client: Awaited<ReturnType<typeof getClient>>,
+  spaceUrl: string
+) {
+  const parsed = parseSpaceUrl(spaceUrl)
+  if (!parsed) {
+    throw new Error(`Not a space URL: ${spaceUrl}`)
+  }
+  return client.space(parsed.spaceId).collection(COLLECTION_ID)
 }
 
-export async function saveBatch(batch: Batch): Promise<Batch> {
-  const collection = await getCollection()
-  const stored: Batch = { ...batch, updatedAt: new Date().toISOString() }
+// Saves the batch into its own space, creating (and registering) that space
+// on the first save.
+export async function saveBatch(adapter: BatchIssuerAdapter, batch: Batch): Promise<Batch> {
+  const client = await getClient(adapter)
+  const spaceUrl = batch.spaceUrl || (await adapter.spaces.create('batch', batch.name))
+  const stored: Batch = { ...batch, spaceUrl, updatedAt: new Date().toISOString() }
   const data = JSON.parse(JSON.stringify(stored))
+  const collection = batchCollection(client, spaceUrl)
   try {
-    await collection.put(resourceId(batch.id), data)
+    await collection.put(RESOURCE_ID, data)
   } catch {
-    // First save into a space that requires explicit collection creation.
-    const session = await getSessionWASClient()
-    await session!.client.space(session!.spaceId).createCollection({
-      id: COLLECTION_ID,
-      name: 'Credential batches',
-    })
-    await collection.put(resourceId(batch.id), data)
+    // First write into a server that wants the collection configured first.
+    await collection.configure({ name: 'Batch' })
+    await collection.put(RESOURCE_ID, data)
   }
   return stored
 }
 
-export async function loadBatch(batchId: string): Promise<Batch | null> {
-  const collection = await getCollection()
-  const data = await collection.get(resourceId(batchId))
+export async function loadBatch(adapter: BatchIssuerAdapter, spaceUrl: string): Promise<Batch | null> {
+  const client = await getClient(adapter)
+  const data = await batchCollection(client, spaceUrl).get(RESOURCE_ID)
   return data && !(data instanceof Blob) ? (data as unknown as Batch) : null
 }
 
-export async function deleteBatch(batchId: string): Promise<void> {
-  const session = await getSessionWASClient()
-  if (!session) {
-    throw new Error('Not logged in.')
+// Deleting a batch deletes its whole space: the back end removes the registry
+// row and the space's bucket.
+export async function deleteBatch(adapter: BatchIssuerAdapter, batch: Batch): Promise<void> {
+  if (!batch.spaceUrl) {
+    return
   }
-  await session.client
-    .space(session.spaceId)
-    .collection(COLLECTION_ID)
-    .resource(resourceId(batchId))
-    .delete()
+  await adapter.spaces.remove(batch.spaceUrl)
 }
 
-// Loads every batch in the collection. Batches are small (metadata plus CSV
-// rows), so fetching each listed resource is fine at this scale.
-export async function listBatches(): Promise<Batch[]> {
-  const collection = await getCollection()
-  const listing = await collection.list().catch(() => null)
-  if (!listing) {
-    return []
-  }
-  const ids = (listing.items ?? [])
-    .map((item) => item.id ?? item.url?.split('/').pop() ?? '')
-    .filter((id) => id.endsWith('.json'))
+// Loads every batch: the registered batch-type spaces, each holding one batch
+// document. A batch space whose document is missing or unreadable (a save
+// that never completed) still shows up as a stub so it can be deleted.
+export async function listBatches(adapter: BatchIssuerAdapter): Promise<Batch[]> {
+  const client = await getClient(adapter)
+  const spaces = (await adapter.spaces.list()).filter(({ type }) => type === 'batch')
   const batches = await Promise.all(
-    ids.map(async (id) => {
-      const data = await collection.get(id).catch(() => null)
-      return data && !(data instanceof Blob) ? (data as unknown as Batch) : null
+    spaces.map(async (space): Promise<Batch> => {
+      try {
+        const data = await batchCollection(client, space.url).get(RESOURCE_ID)
+        if (data && !(data instanceof Blob)) {
+          return { ...(data as unknown as Batch), spaceUrl: space.url }
+        }
+      } catch {
+        // fall through to the stub
+      }
+      return {
+        id: space.url,
+        spaceUrl: space.url,
+        name: space.name ?? '',
+        description: '',
+        issuer: { name: '' },
+        templateId: '',
+        columns: [],
+        rows: [],
+        createdAt: space.createdAt ?? '',
+        updatedAt: space.createdAt ?? '',
+      }
     })
   )
-  return batches
-    .filter((batch): batch is Batch => batch !== null && typeof batch.id === 'string')
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  return batches.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
