@@ -1,0 +1,30 @@
+{
+  "name": "batch-issuer",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@interop/ed25519-signature": "^7.2.1",
+    "@interop/ed25519-verification-key": "^8.0.4",
+    "@interop/ezcap": "^7.4.3",
+    "@interop/was-client": "^0.41.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "papaparse": "^5.4.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.3.14",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0"
+  }
+}
