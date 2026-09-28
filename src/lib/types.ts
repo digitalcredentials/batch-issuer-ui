@@ -5,10 +5,13 @@ export interface BatchIssuerDetails {
 }
 
 // One batch of credentials-to-be: the metadata entered in the form plus the
-// recipient rows parsed from (and edited after) the CSV upload. Stored as a
-// JSON resource in the owner's WAS space, in the `batches` collection.
+// recipient rows parsed from (and edited after) the CSV upload. Every batch
+// lives in its own WAS space (registered with type 'batch'), stored as the
+// JSON resource batch/batch.json.
 export interface Batch {
   id: string
+  // The batch's own space URL; empty until the first save creates the space.
+  spaceUrl: string
   name: string
   description: string
   issuer: BatchIssuerDetails
@@ -36,6 +39,7 @@ export function newBatch(): Batch {
   const now = new Date().toISOString()
   return {
     id: crypto.randomUUID(),
+    spaceUrl: '',
     name: '',
     description: '',
     issuer: { name: '' },
