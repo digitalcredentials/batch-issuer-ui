@@ -1,5 +1,5 @@
 {
-  "name": "batch-issuer",
+  "name": "batch-issuer-ui",
   "private": true,
   "version": "0.0.0",
   "type": "module",

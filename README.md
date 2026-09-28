@@ -1,4 +1,4 @@
-# batch-issuer
+# batch-issuer-ui
 
 A standalone web app that lets a wallet owner issue a batch of verifiable
 credentials — for example, a conference organizer issuing an attendance
