@@ -1,4 +1,12 @@
 import type { WasClient } from '@interop/was-client'
+import type { Batch } from './lib/types'
+
+// The outcome of a notify run: how many recipients were emailed, and which
+// rows failed (by index) with why.
+export interface NotifyResult {
+  sent: number
+  failures: { row: number; reason: string }[]
+}
 
 // A WAS space as the wallet's spaces API reports it.
 export interface SpaceInfo {
@@ -22,6 +30,9 @@ export interface BatchIssuerAdapter {
     list(): Promise<SpaceInfo[]>
     remove(spaceUrl: string): Promise<void>
   }
+  // Emails every recipient in the batch a collection link, staging the
+  // encrypted per-credential bundles (the issuer back end's POST /notify).
+  notifyRecipients(batch: Batch): Promise<NotifyResult>
   // Base URL of the credential-templates API (GET {base}/templates).
   templatesApiBase: string
   // Called when a WAS or spaces call is rejected as unauthorized.
