@@ -21,7 +21,9 @@ export default function BatchEditor({
   const [batch, setBatch] = useState<Batch>(initialBatch)
   const [templates, setTemplates] = useState<TemplateInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [notifying, setNotifying] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -84,6 +86,33 @@ export default function BatchEditor({
     }
   }
 
+  async function handleNotify() {
+    if (
+      !confirm(
+        "We're about to email all recipients in your batch to let them know they can now collect their credential. Okay to send the emails?"
+      )
+    ) {
+      return
+    }
+    setNotifying(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const { sent, failures } = await adapter.notifyRecipients(batch)
+      setNotice(`Emailed ${sent} recipient${sent === 1 ? '' : 's'}.`)
+      if (failures.length) {
+        setError(
+          `${failures.length} row${failures.length === 1 ? '' : 's'} failed: ` +
+            failures.map(({ row, reason }) => `row ${row + 1} (${reason})`).join('; ')
+        )
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to notify recipients.')
+    } finally {
+      setNotifying(false)
+    }
+  }
+
   // Columns declared by the template but absent from the uploaded CSV, so a
   // mismatch is visible before anyone tries to issue the batch.
   const missingColumns = useMemo(() => {
@@ -110,6 +139,21 @@ export default function BatchEditor({
           </button>
           <button
             type="button"
+            onClick={handleNotify}
+            disabled={notifying || !batch.spaceUrl || batch.rows.length === 0}
+            title={
+              !batch.spaceUrl
+                ? 'Save the batch first'
+                : batch.rows.length === 0
+                  ? 'Upload recipients first'
+                  : 'Email every recipient a collection link'
+            }
+            className="rounded-md border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
+          >
+            {notifying ? 'Notifying…' : 'Notify recipients'}
+          </button>
+          <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
             className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
@@ -120,6 +164,9 @@ export default function BatchEditor({
       </div>
 
       {error && <p className="mb-4 rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+      {notice && (
+        <p className="mb-4 rounded-md bg-green-50 px-4 py-2 text-sm text-green-800">{notice}</p>
+      )}
 
       {batch.spaceUrl && (
         <p className="mb-4 text-xs text-slate-400">Batch space: {batch.spaceUrl}</p>

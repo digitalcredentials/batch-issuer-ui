@@ -57,3 +57,14 @@ npm run typecheck
 ```
 
 `react`, `react-dom`, and `@interop/was-client` are peer dependencies.
+
+## Notify recipients
+
+Once a batch is saved and has recipient rows, **Notify recipients** (after a
+confirmation) posts the batch to the issuer back end's `POST /notify` via
+`adapter.notifyRecipients(batch)`. The back end stages a KMS-encrypted bundle
+per recipient in the batch's space (`<cred_id>/bundle.json`), records progress
+in a special `logs` collection (`logs/log.json`, no PII), and emails each
+recipient a collection link carrying their `credId` and decryption context.
+Per-row failures (missing `recipientEmail`, oversize rows) are reported back
+without stopping the rest of the batch.
