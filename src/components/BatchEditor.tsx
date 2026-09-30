@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { BatchIssuerAdapter } from '../adapter'
-import { saveBatch } from '../lib/batches'
+import { saveBatch, deleteBatch, loadBatchLog, recipientsNotified, type BatchLog } from '../lib/batches'
 import { parseCsvFile } from '../lib/csv'
 import { fetchTemplates } from '../lib/templates'
 import type { Batch, TemplateInfo } from '../lib/types'
@@ -24,8 +24,14 @@ export default function BatchEditor({
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [notifying, setNotifying] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [log, setLog] = useState<BatchLog | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  // Once recipients have been notified, the batch's details are frozen: the
+  // staged bundles and emailed links were built from them.
+  const notified = recipientsNotified(log)
 
   useEffect(() => {
     fetchTemplates(adapter.templatesApiBase).then(setTemplates, (err) => {
@@ -33,6 +39,21 @@ export default function BatchEditor({
       setError(err instanceof Error ? err.message : 'Failed to load templates.')
     })
   }, [adapter])
+
+  async function refreshLog(spaceUrl: string) {
+    try {
+      setLog(await loadBatchLog(adapter, spaceUrl))
+    } catch {
+      // No log (or unreadable) just means no activity to show
+    }
+  }
+
+  useEffect(() => {
+    if (initialBatch.spaceUrl) {
+      void refreshLog(initialBatch.spaceUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialBatch.spaceUrl])
 
   const selectedTemplate = useMemo(
     () => templates?.find(({ id }) => id === batch.templateId) ?? null,
@@ -110,6 +131,30 @@ export default function BatchEditor({
       setError(err instanceof Error ? err.message : 'Failed to notify recipients.')
     } finally {
       setNotifying(false)
+      // The notify run appended to the batch's log; reload it so the form
+      // locks and the button relabels
+      if (batch.spaceUrl) {
+        void refreshLog(batch.spaceUrl)
+      }
+    }
+  }
+
+  async function handleDelete() {
+    if (
+      !confirm(
+        `Delete batch "${batch.name || batch.id}"? This deletes the batch's whole storage space and cannot be undone.`
+      )
+    ) {
+      return
+    }
+    setDeleting(true)
+    setError(null)
+    try {
+      await deleteBatch(adapter, batch)
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete batch.')
+      setDeleting(false)
     }
   }
 
@@ -137,6 +182,16 @@ export default function BatchEditor({
           >
             Back to batches
           </button>
+          {batch.spaceUrl && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="rounded-md border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleNotify}
@@ -150,18 +205,26 @@ export default function BatchEditor({
             }
             className="rounded-md border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 disabled:opacity-50"
           >
-            {notifying ? 'Notifying…' : 'Notify recipients'}
+            {notifying ? 'Notifying…' : notified ? 'Resend Notifications' : 'Notify recipients'}
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save batch'}
-          </button>
+          {!notified && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save batch'}
+            </button>
+          )}
         </div>
       </div>
+
+      {notified && (
+        <p className="mb-4 rounded-md bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800">
+          The recipients have been notified and so the batch details can no longer be changed.
+        </p>
+      )}
 
       {error && <p className="mb-4 rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
       {notice && (
@@ -178,6 +241,7 @@ export default function BatchEditor({
           <input
             value={batch.name}
             onChange={(e) => update({ name: e.target.value })}
+            disabled={notified}
             placeholder="VC Summit 2026 attendance"
             className={inputClass}
           />
@@ -187,6 +251,7 @@ export default function BatchEditor({
           <input
             value={batch.issuer.name}
             onChange={(e) => updateIssuer({ name: e.target.value })}
+            disabled={notified}
             placeholder="Verifiable Credentials Summit"
             className={inputClass}
           />
@@ -196,6 +261,7 @@ export default function BatchEditor({
           <textarea
             value={batch.description}
             onChange={(e) => update({ description: e.target.value })}
+            disabled={notified}
             rows={2}
             placeholder="Attendance credentials for everyone who attended the 2026 summit."
             className={inputClass}
@@ -209,6 +275,7 @@ export default function BatchEditor({
             type="url"
             value={batch.issuer.url ?? ''}
             onChange={(e) => updateIssuer({ url: e.target.value || undefined })}
+            disabled={notified}
             placeholder="https://summit.example.org"
             className={inputClass}
           />
@@ -222,6 +289,7 @@ export default function BatchEditor({
               type="url"
               value={batch.issuer.logo ?? ''}
               onChange={(e) => updateIssuer({ logo: e.target.value || undefined })}
+              disabled={notified}
               placeholder="https://summit.example.org/logo.png"
               className={inputClass}
             />
@@ -239,6 +307,7 @@ export default function BatchEditor({
           <select
             value={batch.templateId}
             onChange={(e) => update({ templateId: e.target.value })}
+            disabled={notified}
             className={inputClass}
           >
             <option value="">
@@ -265,6 +334,7 @@ export default function BatchEditor({
             ref={fileInput}
             type="file"
             accept=".csv,text/csv"
+            disabled={notified}
             onChange={(e) => {
               const file = e.target.files?.[0]
               if (file) void handleCsvUpload(file)
@@ -301,9 +371,59 @@ export default function BatchEditor({
             columns={batch.columns}
             rows={batch.rows}
             onChange={(rows) => update({ rows })}
+            readOnly={notified}
           />
         )}
       </section>
+
+      {log && (log.entries.length > 0 || Object.keys(log.credentials).length > 0) && (
+        <section className="mt-8">
+          <h3 className="mb-3 text-base font-semibold">Activity log</h3>
+          {log.entries.length > 0 && (
+            <ul className="mb-4 space-y-1">
+              {log.entries.map(({ type, at, recipientCount }, index) => (
+                <li key={`${at}-${index}`} className="text-sm text-slate-600">
+                  {type === 'notification-triggered'
+                    ? `Notifications sent to ${recipientCount ?? '?'} recipient${recipientCount === 1 ? '' : 's'}`
+                    : type}{' '}
+                  — {new Date(at).toLocaleString()}
+                </li>
+              ))}
+            </ul>
+          )}
+          {Object.keys(log.credentials).length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <table className="w-full min-w-max border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left">
+                    <th className="px-3 py-2 font-medium text-slate-700">Credential</th>
+                    <th className="px-3 py-2 font-medium text-slate-700">Emailed</th>
+                    <th className="px-3 py-2 font-medium text-slate-700">Collected</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(log.credentials).map(([credId, entry]) => {
+                    const collections = entry.collections ?? (entry.collectedAt ? [entry.collectedAt] : [])
+                    return (
+                      <tr key={credId} className="border-b border-slate-100 last:border-b-0">
+                        <td className="px-3 py-2 font-mono text-xs text-slate-500">{credId}</td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {entry.emailSentAt ? new Date(entry.emailSentAt).toLocaleString() : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {collections.length === 0
+                            ? 'Not collected'
+                            : `${collections.length} time${collections.length === 1 ? '' : 's'}, last ${new Date(collections[collections.length - 1]).toLocaleString()}`}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { BatchIssuerAdapter } from '../adapter'
-import { deleteBatch, listBatches } from '../lib/batches'
+import { listBatches } from '../lib/batches'
 import { newBatch, type Batch } from '../lib/types'
 
 export default function BatchListPage({
@@ -19,22 +19,6 @@ export default function BatchListPage({
       setBatches([])
     })
   }, [adapter])
-
-  async function handleDelete(batch: Batch) {
-    if (
-      !confirm(
-        `Delete batch "${batch.name || batch.id}"? This deletes the batch's whole storage space and cannot be undone.`
-      )
-    ) {
-      return
-    }
-    try {
-      await deleteBatch(adapter, batch)
-      setBatches((current) => current?.filter(({ id }) => id !== batch.id) ?? null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete batch.')
-    }
-  }
 
   return (
     <div>
@@ -77,14 +61,7 @@ export default function BatchListPage({
                 onClick={() => onEdit(batch)}
                 className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
               >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(batch)}
-                className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
-              >
-                Delete
+                Open
               </button>
             </li>
           ))}

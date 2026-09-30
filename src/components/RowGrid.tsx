@@ -1,14 +1,17 @@
 // Editable recipient grid: every cell is an input, rows can be deleted or
-// inserted anywhere, and a new row can be appended at the end.
+// inserted anywhere, and a new row can be appended at the end. In readOnly
+// mode (a notified batch) the cells are disabled and the row controls hidden.
 
 export default function RowGrid({
   columns,
   rows,
   onChange,
+  readOnly = false,
 }: {
   columns: string[]
   rows: Record<string, string>[]
   onChange: (rows: Record<string, string>[]) => void
+  readOnly?: boolean
 }) {
   function blankRow(): Record<string, string> {
     return Object.fromEntries(columns.map((column) => [column, '']))
@@ -51,41 +54,48 @@ export default function RowGrid({
                   <input
                     value={row[column] ?? ''}
                     onChange={(e) => setCell(rowIndex, column, e.target.value)}
-                    className="w-full min-w-32 rounded border border-transparent px-2 py-1 hover:border-slate-200 focus:border-indigo-500 focus:outline-none"
+                    disabled={readOnly}
+                    className="w-full min-w-32 rounded border border-transparent px-2 py-1 hover:border-slate-200 focus:border-indigo-500 focus:outline-none disabled:text-slate-500"
                   />
                 </td>
               ))}
               <td className="whitespace-nowrap px-2 py-1 text-right">
-                <button
-                  type="button"
-                  title="Insert row below"
-                  onClick={() => insertRowBelow(rowIndex)}
-                  className="rounded px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  title="Delete row"
-                  onClick={() => deleteRow(rowIndex)}
-                  className="rounded px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                >
-                  ✕
-                </button>
+                {!readOnly && (
+                  <>
+                    <button
+                      type="button"
+                      title="Insert row below"
+                      onClick={() => insertRowBelow(rowIndex)}
+                      className="rounded px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      title="Delete row"
+                      onClick={() => deleteRow(rowIndex)}
+                      className="rounded px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      ✕
+                    </button>
+                  </>
+                )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <div className="border-t border-slate-200 px-3 py-2">
-        <button
-          type="button"
-          onClick={() => onChange([...rows, blankRow()])}
-          className="text-sm text-indigo-600 hover:text-indigo-800"
-        >
-          + Add row
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="border-t border-slate-200 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => onChange([...rows, blankRow()])}
+            className="text-sm text-indigo-600 hover:text-indigo-800"
+          >
+            + Add row
+          </button>
+        </div>
+      )}
     </div>
   )
 }
