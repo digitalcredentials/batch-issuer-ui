@@ -56,6 +56,46 @@ export async function loadBatch(adapter: BatchIssuerAdapter, spaceUrl: string): 
   return data && !(data instanceof Blob) ? (data as unknown as Batch) : null
 }
 
+// The activity log the notify/collection back end keeps in the batch space
+// (logs/log.json): notification runs, and per-credential email/collection
+// timestamps keyed by credId — no recipient data.
+export interface BatchLogCredential {
+  emailSentAt?: string
+  collectedAt?: string
+  collections?: string[]
+}
+
+export interface BatchLog {
+  entries: { type: string; at: string; recipientCount?: number }[]
+  credentials: Record<string, BatchLogCredential>
+}
+
+export async function loadBatchLog(
+  adapter: BatchIssuerAdapter,
+  spaceUrl: string
+): Promise<BatchLog | null> {
+  const client = await getClient(adapter)
+  const parsed = parseSpaceUrl(spaceUrl)
+  if (!parsed) {
+    return null
+  }
+  const data = await client
+    .space(parsed.spaceId)
+    .collection('logs')
+    .get('log.json')
+    .catch(() => null)
+  if (!data || data instanceof Blob) {
+    return null
+  }
+  const log = data as unknown as Partial<BatchLog>
+  return { entries: log.entries ?? [], credentials: log.credentials ?? {} }
+}
+
+// True when the log records at least one notification run.
+export function recipientsNotified(log: BatchLog | null): boolean {
+  return !!log?.entries.some(({ type }) => type === 'notification-triggered')
+}
+
 // Deleting a batch deletes its whole space: the back end removes the registry
 // row and the space's bucket.
 export async function deleteBatch(adapter: BatchIssuerAdapter, batch: Batch): Promise<void> {
