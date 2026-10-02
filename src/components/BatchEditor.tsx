@@ -147,14 +147,19 @@ export default function BatchEditor({
             failures.map(({ row, reason }) => `row ${row + 1} (${reason})`).join('; ')
         )
       }
-      // Persist which credId belongs to which row in the batch document (it
-      // already holds the rows), so the log view can show who each credential
-      // was staged for; a resend merges its fresh credIds in.
+      // Write each staged credId onto its own row in the batch document, so
+      // the association is intrinsic to the row (it survives reordering or
+      // hand-edits) and the log view can show who each credential was staged
+      // for. A resend overwrites rows with their fresh credIds.
       if (recipientRows && Object.keys(recipientRows).length) {
-        const stored = await saveBatch(adapter, {
-          ...batch,
-          credentialRecipients: { ...batch.credentialRecipients, ...recipientRows },
+        const credIdByIndex = new Map(
+          Object.entries(recipientRows).map(([credId, index]) => [index, credId])
+        )
+        const rows = batch.rows.map((row, index) => {
+          const credId = credIdByIndex.get(index)
+          return credId ? { ...row, credId } : row
         })
+        const stored = await saveBatch(adapter, { ...batch, rows })
         setBatch(stored)
       }
     } catch (err) {
@@ -435,12 +440,11 @@ export default function BatchEditor({
                 <tbody>
                   {Object.entries(log.credentials).map(([credId, entry]) => {
                     const collections = entry.collections ?? (entry.collectedAt ? [entry.collectedAt] : [])
-                    // Joined for display only: the log carries credIds, the
-                    // batch document knows whose row each credId was staged
-                    // for. Entries from before the mapping existed fall back
-                    // to the credId.
-                    const rowIndex = batch.credentialRecipients?.[credId]
-                    const recipient = rowIndex === undefined ? undefined : batch.rows[rowIndex]
+                    // Joined for display only: the log carries credIds, and
+                    // the batch document's rows carry their own credId.
+                    // Entries from before rows carried credIds fall back to
+                    // showing the credId.
+                    const recipient = batch.rows.find((row) => row.credId === credId)
                     return (
                       <tr key={credId} className="border-b border-slate-100 last:border-b-0">
                         <td className="px-3 py-2" title={credId}>
