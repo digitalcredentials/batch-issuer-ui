@@ -33,6 +33,9 @@ export interface BatchIssuerAdapter {
   // Emails every recipient in the batch a collection link, staging the
   // encrypted per-credential bundles (the issuer back end's POST /notify).
   notifyRecipients(batch: Batch): Promise<NotifyResult>
+  // Revokes one credential's status position by its revocation token (the
+  // status list service's POST /revoke; the token is the authorization).
+  revokeStatus(revocationToken: string): Promise<void>
   // Base URL of the credential-templates API (GET {base}/templates).
   templatesApiBase: string
   // Called when a WAS or spaces call is rejected as unauthorized.

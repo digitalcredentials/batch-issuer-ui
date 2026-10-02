@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { BatchIssuerAdapter } from '../adapter'
-import { saveBatch, deleteBatch, loadBatchLog, recipientsNotified, type BatchLog } from '../lib/batches'
+import { saveBatch, deleteBatch, loadBatchLog, recipientsNotified, revokeCredential, type BatchLog } from '../lib/batches'
 import { parseCsvFile } from '../lib/csv'
 import { fetchTemplates } from '../lib/templates'
 import type { Batch, TemplateInfo } from '../lib/types'
@@ -27,6 +27,8 @@ export default function BatchEditor({
   const [deleting, setDeleting] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [log, setLog] = useState<BatchLog | null>(null)
+  // The credId currently being revoked, while its status call runs
+  const [revoking, setRevoking] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   // Once recipients have been notified, the batch's details are frozen: the
@@ -54,6 +56,24 @@ export default function BatchEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialBatch.spaceUrl])
+
+  // Revokes one credential's status position; the credential then fails
+  // verifiers' status checks. Not reversible through this UI.
+  async function handleRevoke(credId: string, token: string) {
+    if (!confirm('Revoke this credential? Verifiers will see it as revoked. This cannot be undone here.')) {
+      return
+    }
+    setRevoking(credId)
+    setError(null)
+    try {
+      await revokeCredential(adapter, batch.spaceUrl, credId, token)
+      await refreshLog(batch.spaceUrl)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The revocation failed.')
+    } finally {
+      setRevoking(null)
+    }
+  }
 
   const selectedTemplate = useMemo(
     () => templates?.find(({ id }) => id === batch.templateId) ?? null,
@@ -399,6 +419,7 @@ export default function BatchEditor({
                     <th className="px-3 py-2 font-medium text-slate-700">Credential</th>
                     <th className="px-3 py-2 font-medium text-slate-700">Emailed</th>
                     <th className="px-3 py-2 font-medium text-slate-700">Collected</th>
+                    <th className="px-3 py-2 font-medium text-slate-700">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -414,6 +435,25 @@ export default function BatchEditor({
                           {collections.length === 0
                             ? 'Not collected'
                             : `${collections.length} time${collections.length === 1 ? '' : 's'}, last ${new Date(collections[collections.length - 1]).toLocaleString()}`}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {entry.revokedAt ? (
+                            <span className="text-red-600">
+                              Revoked {new Date(entry.revokedAt).toLocaleDateString()}
+                            </span>
+                          ) : entry.revocationToken ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleRevoke(credId, entry.revocationToken!)}
+                              disabled={revoking !== null}
+                              className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              {revoking === credId ? 'Revoking…' : 'Revoke'}
+                            </button>
+                          ) : (
+                            // Issued before status positions existed
+                            '—'
+                          )}
                         </td>
                       </tr>
                     )
