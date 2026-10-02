@@ -5,9 +5,9 @@ a batch of verifiable credentials — for example, a conference organizer issuin
 an attendance credential to every attendee. It ships as a component library
 (`@digitalcredentials/batch-issuer-ui`) that
 [lcw-front-end](../lcw-front-end) mounts as a screen, reusing the wallet's own
-session: the wallet supplies its authenticated `WasClient` and its back end's
-`/spaces` API through an adapter, so this package knows nothing about login,
-localStorage, or env vars.
+session: the wallet supplies its authenticated `WasClient`, the WAS server's
+`/spaces` API, and the issuance and revocation calls through an adapter, so
+this package knows nothing about login, localStorage, or env vars.
 
 ## What it does
 
@@ -20,11 +20,17 @@ localStorage, or env vars.
   insert rows anywhere, or append new ones. Required template columns missing
   from the CSV are flagged.
 - **One WAS space per batch**: the first save creates a brand-new space
-  (controlled by the wallet's DID) through the wallet back end's
-  `POST /spaces`, registered with `type: 'batch'` in the spaces registry, and
-  writes the batch document to `batch/batch.json` in that space. The batch
-  list is the registry's batch-type spaces; deleting a batch deletes its whole
-  space (registry row + bucket).
+  (controlled by the wallet's DID) through the WAS server's `POST /spaces`,
+  registered with `type: 'batch'` in the spaces registry, and writes the batch
+  document to `batch/batch.json` in that space. The batch list is the
+  registry's batch-type spaces; deleting a batch deletes its whole space
+  (registry row + bucket).
+- **Per-credential revocation**: the batch's activity log shows each
+  credential's progress (emailed, collected) and, once collected, a **Revoke**
+  button — the revocation token recorded in the log at collection time is the
+  bearer capability the adapter's `revokeStatus` spends against the status
+  list service; `revokedAt` is written back to the log and the credential
+  stops being collectable.
 
 ## Usage
 
@@ -33,12 +39,16 @@ import { BatchIssuerPanel, type BatchIssuerAdapter } from '@digitalcredentials/b
 
 const adapter: BatchIssuerAdapter = {
   getSession,          // () => Promise<{ client: WasClient } | null>
-  spaces: { create, list, remove },  // the wallet back end's /spaces API
+  spaces: { create, list, remove },  // the WAS server's /spaces API
+  notifyRecipients,    // the issuer back end's POST /notify
+  revokeStatus,        // the status list service's POST /revoke (by token)
   templatesApiBase,    // credential-templates API base URL
   onUnauthorized,      // e.g. clear the session and bounce to /login
 }
 
-<BatchIssuerPanel adapter={adapter} />
+// Optional: initialSpaceUrl opens straight into that space's batch (the
+// wallet passes it when a batch space is opened from the spaces view).
+<BatchIssuerPanel adapter={adapter} initialSpaceUrl={spaceUrl} />
 ```
 
 Styling is Tailwind utility classes compiled by the consumer. In a Tailwind v4
