@@ -63,6 +63,13 @@ export interface BatchLogCredential {
   emailSentAt?: string
   collectedAt?: string
   collections?: string[]
+  // The bearer token that revokes this credential's status position, stored
+  // here (the batch owner's space) when the position was allocated at
+  // notification time.
+  revocationToken?: string
+  statusListCredential?: string
+  statusListIndex?: string
+  revokedAt?: string
 }
 
 export interface BatchLog {
@@ -94,6 +101,32 @@ export async function loadBatchLog(
 // True when the log records at least one notification run.
 export function recipientsNotified(log: BatchLog | null): boolean {
   return !!log?.entries.some(({ type }) => type === 'notification-triggered')
+}
+
+// Revokes one credential: the status list service is told first (the token is
+// the authorization), then the batch log records revokedAt so the UI shows it
+// and does not offer the revocation again.
+export async function revokeCredential(
+  adapter: BatchIssuerAdapter,
+  spaceUrl: string,
+  credId: string,
+  token: string
+): Promise<void> {
+  await adapter.revokeStatus(token)
+  const client = await getClient(adapter)
+  const parsed = parseSpaceUrl(spaceUrl)
+  if (!parsed) {
+    throw new Error(`Not a space URL: ${spaceUrl}`)
+  }
+  const logs = client.space(parsed.spaceId).collection('logs')
+  const data = await logs.get('log.json').catch(() => null)
+  const log = (data && !(data instanceof Blob) ? data : { entries: [], credentials: {} }) as BatchLog
+  log.credentials ??= {}
+  log.credentials[credId] = {
+    ...log.credentials[credId],
+    revokedAt: new Date().toISOString(),
+  }
+  await logs.put('log.json', JSON.parse(JSON.stringify(log)) as Parameters<typeof logs.put>[1])
 }
 
 // Deleting a batch deletes its whole space: the back end removes the registry
