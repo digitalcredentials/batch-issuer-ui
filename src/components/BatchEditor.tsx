@@ -139,13 +139,28 @@ export default function BatchEditor({
     setError(null)
     setNotice(null)
     try {
-      const { sent, failures } = await adapter.notifyRecipients(batch)
+      const { sent, failures, recipientRows } = await adapter.notifyRecipients(batch)
       setNotice(`Emailed ${sent} recipient${sent === 1 ? '' : 's'}.`)
       if (failures.length) {
         setError(
           `${failures.length} row${failures.length === 1 ? '' : 's'} failed: ` +
             failures.map(({ row, reason }) => `row ${row + 1} (${reason})`).join('; ')
         )
+      }
+      // Write each staged credId onto its own row in the batch document, so
+      // the association is intrinsic to the row (it survives reordering or
+      // hand-edits) and the log view can show who each credential was staged
+      // for. A resend overwrites rows with their fresh credIds.
+      if (recipientRows && Object.keys(recipientRows).length) {
+        const credIdByIndex = new Map(
+          Object.entries(recipientRows).map(([credId, index]) => [index, credId])
+        )
+        const rows = batch.rows.map((row, index) => {
+          const credId = credIdByIndex.get(index)
+          return credId ? { ...row, credId } : row
+        })
+        const stored = await saveBatch(adapter, { ...batch, rows })
+        setBatch(stored)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to notify recipients.')
@@ -416,7 +431,7 @@ export default function BatchEditor({
               <table className="w-full min-w-max border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                    <th className="px-3 py-2 font-medium text-slate-700">Credential</th>
+                    <th className="px-3 py-2 font-medium text-slate-700">Recipient</th>
                     <th className="px-3 py-2 font-medium text-slate-700">Emailed</th>
                     <th className="px-3 py-2 font-medium text-slate-700">Collected</th>
                     <th className="px-3 py-2 font-medium text-slate-700">Status</th>
@@ -425,9 +440,27 @@ export default function BatchEditor({
                 <tbody>
                   {Object.entries(log.credentials).map(([credId, entry]) => {
                     const collections = entry.collections ?? (entry.collectedAt ? [entry.collectedAt] : [])
+                    // Joined for display only: the log carries credIds, and
+                    // the batch document's rows carry their own credId.
+                    // Entries from before rows carried credIds fall back to
+                    // showing the credId.
+                    const recipient = batch.rows.find((row) => row.credId === credId)
                     return (
                       <tr key={credId} className="border-b border-slate-100 last:border-b-0">
-                        <td className="px-3 py-2 font-mono text-xs text-slate-500">{credId}</td>
+                        <td className="px-3 py-2" title={credId}>
+                          {recipient ? (
+                            <>
+                              <span className="block text-slate-800">
+                                {recipient.recipientName || '(no name)'}
+                              </span>
+                              <span className="block text-xs text-slate-500">
+                                {recipient.recipientEmail}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="font-mono text-xs text-slate-500">{credId}</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-slate-600">
                           {entry.emailSentAt ? new Date(entry.emailSentAt).toLocaleString() : '—'}
                         </td>

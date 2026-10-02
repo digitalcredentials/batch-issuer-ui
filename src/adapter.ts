@@ -1,11 +1,14 @@
 import type { WasClient } from '@interop/was-client'
 import type { Batch } from './lib/types'
 
-// The outcome of a notify run: how many recipients were emailed, and which
-// rows failed (by index) with why.
+// The outcome of a notify run: how many recipients were emailed, which rows
+// failed (by index) with why, and which credId was staged for which row —
+// returned for the batch document only, never written to the activity log,
+// so the log stays free of recipient data.
 export interface NotifyResult {
   sent: number
   failures: { row: number; reason: string }[]
+  recipientRows?: Record<string, number>
 }
 
 // A WAS space as the wallet's spaces API reports it.

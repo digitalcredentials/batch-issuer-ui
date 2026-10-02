@@ -17,6 +17,12 @@ export interface Batch {
   issuer: BatchIssuerDetails
   templateId: string
   columns: string[]
+  // One row per recipient, keyed by the CSV columns. `credId` is a reserved
+  // key, written onto the row when its notification is staged: it ties the
+  // row to its credential directly (surviving reordering or hand-edits of
+  // this document), is never shown in the grid (which renders `columns`
+  // only), is stripped from the template fields at issuance, and stays out
+  // of the activity log, which carries credIds alone.
   rows: Record<string, string>[]
   createdAt: string
   updatedAt: string
