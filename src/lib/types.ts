@@ -18,6 +18,11 @@ export interface Batch {
   templateId: string
   columns: string[]
   rows: Record<string, string>[]
+  // credId -> index into rows, recorded when notifications are staged. It
+  // lives here in the batch document (which already holds the recipient
+  // rows), NOT in the activity log, so the log stays free of recipient data;
+  // the log view joins the two for display only.
+  credentialRecipients?: Record<string, number>
   createdAt: string
   updatedAt: string
 }

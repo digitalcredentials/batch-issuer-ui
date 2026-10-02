@@ -139,13 +139,23 @@ export default function BatchEditor({
     setError(null)
     setNotice(null)
     try {
-      const { sent, failures } = await adapter.notifyRecipients(batch)
+      const { sent, failures, recipientRows } = await adapter.notifyRecipients(batch)
       setNotice(`Emailed ${sent} recipient${sent === 1 ? '' : 's'}.`)
       if (failures.length) {
         setError(
           `${failures.length} row${failures.length === 1 ? '' : 's'} failed: ` +
             failures.map(({ row, reason }) => `row ${row + 1} (${reason})`).join('; ')
         )
+      }
+      // Persist which credId belongs to which row in the batch document (it
+      // already holds the rows), so the log view can show who each credential
+      // was staged for; a resend merges its fresh credIds in.
+      if (recipientRows && Object.keys(recipientRows).length) {
+        const stored = await saveBatch(adapter, {
+          ...batch,
+          credentialRecipients: { ...batch.credentialRecipients, ...recipientRows },
+        })
+        setBatch(stored)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to notify recipients.')
@@ -416,7 +426,7 @@ export default function BatchEditor({
               <table className="w-full min-w-max border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                    <th className="px-3 py-2 font-medium text-slate-700">Credential</th>
+                    <th className="px-3 py-2 font-medium text-slate-700">Recipient</th>
                     <th className="px-3 py-2 font-medium text-slate-700">Emailed</th>
                     <th className="px-3 py-2 font-medium text-slate-700">Collected</th>
                     <th className="px-3 py-2 font-medium text-slate-700">Status</th>
@@ -425,9 +435,28 @@ export default function BatchEditor({
                 <tbody>
                   {Object.entries(log.credentials).map(([credId, entry]) => {
                     const collections = entry.collections ?? (entry.collectedAt ? [entry.collectedAt] : [])
+                    // Joined for display only: the log carries credIds, the
+                    // batch document knows whose row each credId was staged
+                    // for. Entries from before the mapping existed fall back
+                    // to the credId.
+                    const rowIndex = batch.credentialRecipients?.[credId]
+                    const recipient = rowIndex === undefined ? undefined : batch.rows[rowIndex]
                     return (
                       <tr key={credId} className="border-b border-slate-100 last:border-b-0">
-                        <td className="px-3 py-2 font-mono text-xs text-slate-500">{credId}</td>
+                        <td className="px-3 py-2" title={credId}>
+                          {recipient ? (
+                            <>
+                              <span className="block text-slate-800">
+                                {recipient.recipientName || '(no name)'}
+                              </span>
+                              <span className="block text-xs text-slate-500">
+                                {recipient.recipientEmail}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="font-mono text-xs text-slate-500">{credId}</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-slate-600">
                           {entry.emailSentAt ? new Date(entry.emailSentAt).toLocaleString() : '—'}
                         </td>
