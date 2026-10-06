@@ -43,8 +43,12 @@ export async function saveBatch(adapter: BatchIssuerAdapter, batch: Batch): Prom
   try {
     await collection.put(RESOURCE_ID, data)
   } catch {
-    // First write into a server that wants the collection configured first.
-    await collection.configure({ name: 'Batch' })
+    // First write into a fresh batch space: the collection has no description
+    // yet, and an encryption-capable client refuses to write into a collection
+    // whose description it cannot read. force acknowledges this configure is
+    // creating the collection (plaintext by design: the issuer lambdas read
+    // and write batch collections server-side), not overwriting one.
+    await collection.configure({ name: 'Batch', force: true })
     await collection.put(RESOURCE_ID, data)
   }
   return stored
