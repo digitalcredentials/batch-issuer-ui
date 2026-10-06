@@ -18,11 +18,13 @@ export interface Batch {
   templateId: string
   columns: string[]
   // One row per recipient, keyed by the CSV columns. `credId` is a reserved
-  // key, written onto the row when its notification is staged: it ties the
-  // row to its credential directly (surviving reordering or hand-edits of
-  // this document), is never shown in the grid (which renders `columns`
-  // only), is stripped from the template fields at issuance, and stays out
-  // of the activity log, which carries credIds alone.
+  // key, written onto the row when its notification is staged: the row's
+  // staging history as a comma-joined list, newest last (a resend appends a
+  // fresh credId). It ties the row to its credentials directly (surviving
+  // reordering or hand-edits of this document), is never shown in the grid
+  // (which renders `columns` only), is stripped from the template fields at
+  // issuance, and stays out of the activity log, which carries credIds
+  // alone.
   rows: Record<string, string>[]
   createdAt: string
   updatedAt: string
