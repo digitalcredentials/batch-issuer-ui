@@ -30,7 +30,11 @@ this package knows nothing about login, localStorage, or env vars.
   button — the revocation token recorded in the log at collection time is the
   bearer capability the adapter's `revokeStatus` spends against the status
   list service; `revokedAt` is written back to the log and the credential
-  stops being collectable.
+  stops being collectable. A recipient who was re-notified (Resend) and
+  collected more than once holds several credentials, each with its own
+  status position: the collapsed log row summarizes them ("1 of 2 revoked",
+  "Revoke… (2 copies)") and the expanded row carries one **Revoke this copy**
+  button per collected copy.
 
 ## Usage
 
