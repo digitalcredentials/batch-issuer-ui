@@ -29,6 +29,10 @@ export default function BatchEditor({
   const [log, setLog] = useState<BatchLog | null>(null)
   // The credId currently being revoked, while its status call runs
   const [revoking, setRevoking] = useState<string | null>(null)
+  // Once recipients are notified the form and the recipients table are frozen
+  // reference material, so each collapses into an accordion section
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [recipientsOpen, setRecipientsOpen] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   // Once recipients have been notified, the batch's details are frozen: the
@@ -270,7 +274,23 @@ export default function BatchEditor({
         <p className="mb-4 text-xs text-slate-400">Batch space: {batch.spaceUrl}</p>
       )}
 
-      <section className="mb-8 grid gap-4 rounded-xl border border-slate-200 bg-white p-6 sm:grid-cols-2">
+      <section className="mb-8 rounded-xl border border-slate-200 bg-white">
+        {notified && (
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((open) => !open)}
+            aria-expanded={detailsOpen}
+            className="flex w-full items-center justify-between px-6 py-4 text-left"
+          >
+            <span className="text-base font-semibold">Batch details</span>
+            <span aria-hidden="true" className="text-slate-400">{detailsOpen ? '▾' : '▸'}</span>
+          </button>
+        )}
+        <div
+          className={`grid gap-4 p-6 sm:grid-cols-2 ${
+            notified ? `border-t border-slate-200 ${detailsOpen ? '' : 'hidden'}` : ''
+          }`}
+        >
         <label className="block">
           <span className="mb-1 block text-sm font-medium text-slate-700">Batch name</span>
           <input
@@ -380,6 +400,7 @@ export default function BatchEditor({
             First row is the header; each column becomes a field, each row a recipient.
           </span>
         </label>
+        </div>
       </section>
 
       {missingColumns.length > 0 && (
@@ -389,13 +410,31 @@ export default function BatchEditor({
         </p>
       )}
 
-      <section>
-        <h3 className="mb-3 text-base font-semibold">
-          Recipients{' '}
-          <span className="text-sm font-normal text-slate-500">
-            {batch.rows.length} row{batch.rows.length === 1 ? '' : 's'}
-          </span>
-        </h3>
+      <section className={notified ? 'rounded-xl border border-slate-200 bg-white' : ''}>
+        {notified ? (
+          <button
+            type="button"
+            onClick={() => setRecipientsOpen((open) => !open)}
+            aria-expanded={recipientsOpen}
+            className="flex w-full items-center justify-between px-6 py-4 text-left"
+          >
+            <span className="text-base font-semibold">
+              Recipients{' '}
+              <span className="text-sm font-normal text-slate-500">
+                {batch.rows.length} row{batch.rows.length === 1 ? '' : 's'}
+              </span>
+            </span>
+            <span aria-hidden="true" className="text-slate-400">{recipientsOpen ? '▾' : '▸'}</span>
+          </button>
+        ) : (
+          <h3 className="mb-3 text-base font-semibold">
+            Recipients{' '}
+            <span className="text-sm font-normal text-slate-500">
+              {batch.rows.length} row{batch.rows.length === 1 ? '' : 's'}
+            </span>
+          </h3>
+        )}
+        <div className={notified ? `border-t border-slate-200 p-6 ${recipientsOpen ? '' : 'hidden'}` : ''}>
         {batch.columns.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center text-sm text-slate-500">
             Upload a CSV to load recipients. You can edit cells, delete rows, and insert
@@ -409,6 +448,7 @@ export default function BatchEditor({
             readOnly={notified}
           />
         )}
+        </div>
       </section>
 
       {log && (log.entries.length > 0 || Object.keys(log.credentials).length > 0) && (
