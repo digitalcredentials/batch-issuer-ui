@@ -569,8 +569,12 @@ export default function BatchEditor({
                       const collections = entries.flatMap(({ entry }) =>
                         entry.collections ?? (entry.collectedAt ? [entry.collectedAt] : [])
                       )
-                      // The newest staging carries the live revocation state
-                      const current = entries[entries.length - 1]
+                      // Each collected staging is a separate credential with
+                      // its own status position, so each is revoked on its
+                      // own. The collapsed cell summarizes; the expanded row
+                      // carries one Revoke button per copy.
+                      const copies = entries.filter(({ entry }) => entry.revocationToken || entry.revokedAt)
+                      const revokedCopies = copies.filter(({ entry }) => entry.revokedAt)
                       const expanded = expandedRows.has(key)
                       return (
                         <Fragment key={key}>
@@ -614,19 +618,44 @@ export default function BatchEditor({
                                   : 'multiple'}
                             </td>
                             <td className="px-3 py-2 text-slate-600">
-                              {current.entry.revokedAt ? (
-                                <span className="text-red-600">Revoked</span>
-                              ) : current.entry.revocationToken ? (
-                                <button
-                                  type="button"
-                                  onClick={() => void handleRevoke(current.credId, current.entry.revocationToken!)}
-                                  disabled={revoking !== null}
-                                  className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-                                >
-                                  {revoking === current.credId ? 'Revoking…' : 'Revoke'}
-                                </button>
-                              ) : (
+                              {copies.length === 0 ? (
                                 '—'
+                              ) : copies.length === 1 ? (
+                                copies[0].entry.revokedAt ? (
+                                  <span className="text-red-600">Revoked</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleRevoke(copies[0].credId, copies[0].entry.revocationToken!)
+                                    }
+                                    disabled={revoking !== null}
+                                    className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                  >
+                                    {revoking === copies[0].credId ? 'Revoking…' : 'Revoke'}
+                                  </button>
+                                )
+                              ) : revokedCopies.length === copies.length ? (
+                                <span className="text-red-600">Revoked ({copies.length} copies)</span>
+                              ) : (
+                                <span className="flex flex-wrap items-center gap-2">
+                                  {revokedCopies.length > 0 && (
+                                    <span className="text-red-600">
+                                      {revokedCopies.length} of {copies.length} revoked
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!expanded) toggleExpanded(key)
+                                    }}
+                                    disabled={revoking !== null}
+                                    title="Open the row to revoke each copy separately"
+                                    className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                  >
+                                    Revoke… ({copies.length} copies)
+                                  </button>
+                                </span>
                               )}
                             </td>
                             <td className="px-3 py-2">
@@ -646,47 +675,57 @@ export default function BatchEditor({
                           {expanded && (
                             <tr className="border-b border-slate-100 bg-slate-50/60 last:border-b-0">
                               <td colSpan={5} className="px-3 py-3">
-                                <div className="grid gap-3 text-xs text-slate-600 sm:grid-cols-3">
-                                  <div>
-                                    <p className="mb-1 font-medium text-slate-700">Notifications</p>
-                                    {notifications.length === 0 ? (
-                                      <p>None</p>
-                                    ) : (
-                                      <ul className="space-y-0.5">
-                                        {notifications.map((at, index) => (
-                                          <li key={`${at}-${index}`}>{new Date(at).toLocaleString()}</li>
-                                        ))}
-                                      </ul>
-                                    )}
-                                  </div>
-                                  <div>
-                                    <p className="mb-1 font-medium text-slate-700">Collections</p>
-                                    {collections.length === 0 ? (
-                                      <p>None</p>
-                                    ) : (
-                                      <ul className="space-y-0.5">
-                                        {collections.map((at, index) => (
-                                          <li key={`${at}-${index}`}>{new Date(at).toLocaleString()}</li>
-                                        ))}
-                                      </ul>
-                                    )}
-                                  </div>
-                                  <div>
-                                    <p className="mb-1 font-medium text-slate-700">Status</p>
-                                    {current.entry.revokedAt ? (
-                                      <p className="text-red-600">
-                                        Revoked {new Date(current.entry.revokedAt).toLocaleString()}
-                                      </p>
-                                    ) : (
-                                      <p>Not revoked</p>
-                                    )}
-                                    <p className="mt-2 font-medium text-slate-700">Credential ids</p>
-                                    <ul className="space-y-0.5 font-mono">
-                                      {credIds.map((id) => (
-                                        <li key={id}>{id}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
+                                <div className="space-y-3 text-xs text-slate-600">
+                                  {entries.map(({ credId, entry }, index) => {
+                                    const copyCollections =
+                                      entry.collections ?? (entry.collectedAt ? [entry.collectedAt] : [])
+                                    return (
+                                      <div
+                                        key={credId}
+                                        className="grid gap-3 rounded-md border border-slate-200 bg-white p-3 sm:grid-cols-3"
+                                      >
+                                        <div>
+                                          <p className="mb-1 font-medium text-slate-700">
+                                            {entries.length > 1 ? `Copy ${index + 1} — notified` : 'Notified'}
+                                          </p>
+                                          <p>{entry.emailSentAt ? new Date(entry.emailSentAt).toLocaleString() : 'Not emailed'}</p>
+                                          <p className="mt-2 font-medium text-slate-700">Credential id</p>
+                                          <p className="break-all font-mono">{credId}</p>
+                                        </div>
+                                        <div>
+                                          <p className="mb-1 font-medium text-slate-700">Collected</p>
+                                          {copyCollections.length === 0 ? (
+                                            <p>Not collected</p>
+                                          ) : (
+                                            <ul className="space-y-0.5">
+                                              {copyCollections.map((at, i) => (
+                                                <li key={`${at}-${i}`}>{new Date(at).toLocaleString()}</li>
+                                              ))}
+                                            </ul>
+                                          )}
+                                        </div>
+                                        <div>
+                                          <p className="mb-1 font-medium text-slate-700">Status</p>
+                                          {entry.revokedAt ? (
+                                            <p className="text-red-600">
+                                              Revoked {new Date(entry.revokedAt).toLocaleString()}
+                                            </p>
+                                          ) : entry.revocationToken ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => void handleRevoke(credId, entry.revocationToken!)}
+                                              disabled={revoking !== null}
+                                              className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                            >
+                                              {revoking === credId ? 'Revoking…' : 'Revoke this copy'}
+                                            </button>
+                                          ) : (
+                                            <p>No status position (not collected)</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
                                 </div>
                               </td>
                             </tr>
