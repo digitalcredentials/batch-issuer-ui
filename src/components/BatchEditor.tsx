@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { BatchIssuerAdapter } from '../adapter'
 import { saveBatch, deleteBatch, loadBatchLog, recipientsNotified, revokeCredential, type BatchLog } from '../lib/batches'
 import { parseCsvFile } from '../lib/csv'
@@ -33,6 +33,60 @@ export default function BatchEditor({
   // reference material, so each collapses into an accordion section
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [recipientsOpen, setRecipientsOpen] = useState(false)
+  // The log row currently being re-notified, and the expanded log rows
+  const [resending, setResending] = useState<string | null>(null)
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+
+  function toggleExpanded(key: string) {
+    setExpandedRows((current) => {
+      const next = new Set(current)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
+  // Re-notifies one recipient: stages a fresh credential (the decryption
+  // context lives only in the email, so a resend cannot reuse the old link)
+  // and appends its credId to the row's history.
+  async function handleRowResend(rowIndex: number, key: string) {
+    const row = batch.rows[rowIndex]
+    if (!row) {
+      return
+    }
+    if (!confirm(`Resend the notification email to ${row.recipientEmail || 'this recipient'}?`)) {
+      return
+    }
+    setResending(key)
+    setError(null)
+    try {
+      const { recipientRows, failures } = await adapter.notifyRecipients({ ...batch, rows: [row] })
+      if (failures.length) {
+        setError(`The resend failed: ${failures[0].reason}`)
+        return
+      }
+      const fresh = Object.keys(recipientRows ?? {})[0]
+      if (fresh) {
+        const rows = batch.rows.map((r, index) =>
+          index === rowIndex
+            ? { ...r, credId: r.credId ? `${r.credId},${fresh}` : fresh }
+            : r
+        )
+        const stored = await saveBatch(adapter, { ...batch, rows })
+        setBatch(stored)
+      }
+      if (batch.spaceUrl) {
+        await refreshLog(batch.spaceUrl)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The resend failed.')
+    } finally {
+      setResending(null)
+    }
+  }
   const fileInput = useRef<HTMLInputElement>(null)
 
   // Once recipients have been notified, the batch's details are frozen: the
@@ -153,15 +207,17 @@ export default function BatchEditor({
       }
       // Write each staged credId onto its own row in the batch document, so
       // the association is intrinsic to the row (it survives reordering or
-      // hand-edits) and the log view can show who each credential was staged
-      // for. A resend overwrites rows with their fresh credIds.
+      // hand-edits) and the log view can group a recipient's stagings. The
+      // row's credId is a comma-joined history, newest last: a resend appends
+      // its fresh credId rather than orphaning the previous one.
       if (recipientRows && Object.keys(recipientRows).length) {
         const credIdByIndex = new Map(
           Object.entries(recipientRows).map(([credId, index]) => [index, credId])
         )
         const rows = batch.rows.map((row, index) => {
           const credId = credIdByIndex.get(index)
-          return credId ? { ...row, credId } : row
+          if (!credId) return row
+          return { ...row, credId: row.credId ? `${row.credId},${credId}` : credId }
         })
         const stored = await saveBatch(adapter, { ...batch, rows })
         setBatch(stored)
@@ -475,62 +531,170 @@ export default function BatchEditor({
                     <th className="px-3 py-2 font-medium text-slate-700">Emailed</th>
                     <th className="px-3 py-2 font-medium text-slate-700">Collected</th>
                     <th className="px-3 py-2 font-medium text-slate-700">Status</th>
+                    <th className="px-3 py-2" aria-label="Actions"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(log.credentials).map(([credId, entry]) => {
-                    const collections = entry.collections ?? (entry.collectedAt ? [entry.collectedAt] : [])
-                    // Joined for display only: the log carries credIds, and
-                    // the batch document's rows carry their own credId.
-                    // Entries from before rows carried credIds fall back to
-                    // showing the credId.
-                    const recipient = batch.rows.find((row) => row.credId === credId)
-                    return (
-                      <tr key={credId} className="border-b border-slate-100 last:border-b-0">
-                        <td className="px-3 py-2" title={credId}>
-                          {recipient ? (
-                            <>
-                              <span className="block text-slate-800">
-                                {recipient.recipientName || '(no name)'}
-                              </span>
-                              <span className="block text-xs text-slate-500">
-                                {recipient.recipientEmail}
-                              </span>
-                            </>
-                          ) : (
-                            <span className="font-mono text-xs text-slate-500">{credId}</span>
+                  {(() => {
+                    // Group the per-credId log entries by recipient row: a
+                    // row's credId field is its staging history (comma-joined,
+                    // newest last), so one recipient shows one log row across
+                    // resends. Entries from before rows carried credIds stand
+                    // alone under their credId.
+                    const groups: {
+                      key: string
+                      rowIndex?: number
+                      credIds: string[]
+                    }[] = []
+                    const grouped = new Set<string>()
+                    batch.rows.forEach((row, rowIndex) => {
+                      const history = (row.credId ?? '').split(',').filter((id) => log.credentials[id])
+                      if (history.length) {
+                        groups.push({ key: `row-${rowIndex}`, rowIndex, credIds: history })
+                        history.forEach((id) => grouped.add(id))
+                      }
+                    })
+                    for (const credId of Object.keys(log.credentials)) {
+                      if (!grouped.has(credId)) {
+                        groups.push({ key: credId, credIds: [credId] })
+                      }
+                    }
+
+                    return groups.map(({ key, rowIndex, credIds }) => {
+                      const recipient = rowIndex === undefined ? undefined : batch.rows[rowIndex]
+                      const entries = credIds.map((credId) => ({ credId, entry: log.credentials[credId] }))
+                      const notifications = entries
+                        .map(({ entry }) => entry.emailSentAt)
+                        .filter((at): at is string => Boolean(at))
+                      const collections = entries.flatMap(({ entry }) =>
+                        entry.collections ?? (entry.collectedAt ? [entry.collectedAt] : [])
+                      )
+                      // The newest staging carries the live revocation state
+                      const current = entries[entries.length - 1]
+                      const expanded = expandedRows.has(key)
+                      return (
+                        <Fragment key={key}>
+                          <tr className="border-b border-slate-100 last:border-b-0">
+                            <td className="px-3 py-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleExpanded(key)}
+                                aria-expanded={expanded}
+                                className="flex items-start gap-2 text-left"
+                              >
+                                <span aria-hidden="true" className="mt-0.5 text-slate-400">
+                                  {expanded ? '▾' : '▸'}
+                                </span>
+                                {recipient ? (
+                                  <span>
+                                    <span className="block text-slate-800">
+                                      {recipient.recipientName || '(no name)'}
+                                    </span>
+                                    <span className="block text-xs text-slate-500">
+                                      {recipient.recipientEmail}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="font-mono text-xs text-slate-500">{key}</span>
+                                )}
+                              </button>
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">
+                              {notifications.length === 0
+                                ? '—'
+                                : notifications.length === 1
+                                  ? new Date(notifications[0]).toLocaleDateString()
+                                  : 'multiple'}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">
+                              {collections.length === 0
+                                ? 'Not collected'
+                                : collections.length === 1
+                                  ? new Date(collections[0]).toLocaleDateString()
+                                  : 'multiple'}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">
+                              {current.entry.revokedAt ? (
+                                <span className="text-red-600">Revoked</span>
+                              ) : current.entry.revocationToken ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRevoke(current.credId, current.entry.revocationToken!)}
+                                  disabled={revoking !== null}
+                                  className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                >
+                                  {revoking === current.credId ? 'Revoking…' : 'Revoke'}
+                                </button>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {recipient && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRowResend(rowIndex!, key)}
+                                  disabled={resending !== null || notifying}
+                                  title="Email this recipient a fresh collection link"
+                                  className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  {resending === key ? 'Resending…' : 'Resend'}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                          {expanded && (
+                            <tr className="border-b border-slate-100 bg-slate-50/60 last:border-b-0">
+                              <td colSpan={5} className="px-3 py-3">
+                                <div className="grid gap-3 text-xs text-slate-600 sm:grid-cols-3">
+                                  <div>
+                                    <p className="mb-1 font-medium text-slate-700">Notifications</p>
+                                    {notifications.length === 0 ? (
+                                      <p>None</p>
+                                    ) : (
+                                      <ul className="space-y-0.5">
+                                        {notifications.map((at, index) => (
+                                          <li key={`${at}-${index}`}>{new Date(at).toLocaleString()}</li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="mb-1 font-medium text-slate-700">Collections</p>
+                                    {collections.length === 0 ? (
+                                      <p>None</p>
+                                    ) : (
+                                      <ul className="space-y-0.5">
+                                        {collections.map((at, index) => (
+                                          <li key={`${at}-${index}`}>{new Date(at).toLocaleString()}</li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="mb-1 font-medium text-slate-700">Status</p>
+                                    {current.entry.revokedAt ? (
+                                      <p className="text-red-600">
+                                        Revoked {new Date(current.entry.revokedAt).toLocaleString()}
+                                      </p>
+                                    ) : (
+                                      <p>Not revoked</p>
+                                    )}
+                                    <p className="mt-2 font-medium text-slate-700">Credential ids</p>
+                                    <ul className="space-y-0.5 font-mono">
+                                      {credIds.map((id) => (
+                                        <li key={id}>{id}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                        <td className="px-3 py-2 text-slate-600">
-                          {entry.emailSentAt ? new Date(entry.emailSentAt).toLocaleString() : '—'}
-                        </td>
-                        <td className="px-3 py-2 text-slate-600">
-                          {collections.length === 0
-                            ? 'Not collected'
-                            : `${collections.length} time${collections.length === 1 ? '' : 's'}, last ${new Date(collections[collections.length - 1]).toLocaleString()}`}
-                        </td>
-                        <td className="px-3 py-2 text-slate-600">
-                          {entry.revokedAt ? (
-                            <span className="text-red-600">
-                              Revoked {new Date(entry.revokedAt).toLocaleDateString()}
-                            </span>
-                          ) : entry.revocationToken ? (
-                            <button
-                              type="button"
-                              onClick={() => void handleRevoke(credId, entry.revocationToken!)}
-                              disabled={revoking !== null}
-                              className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-                            >
-                              {revoking === credId ? 'Revoking…' : 'Revoke'}
-                            </button>
-                          ) : (
-                            // Issued before status positions existed
-                            '—'
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
+                        </Fragment>
+                      )
+                    })
+                  })()}
                 </tbody>
               </table>
             </div>
