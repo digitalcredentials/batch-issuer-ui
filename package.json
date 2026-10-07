@@ -3,8 +3,24 @@
   "version": "0.1.0",
   "description": "Batch credential issuer panel for the Learner Credential Wallet",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digitalcredentials/batch-issuer-ui.git"
+  },
+  "author": "Digital Credentials Consortium",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/digitalcredentials/batch-issuer-ui/issues"
+  },
+  "homepage": "https://github.com/digitalcredentials/batch-issuer-ui#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "README.md"
   ],
   "exports": {
     ".": {
@@ -14,7 +30,8 @@
   },
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run build"
   },
   "peerDependencies": {
     "@interop/was-client": ">=0.41.0",

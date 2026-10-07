@@ -72,6 +72,24 @@ npm run typecheck
 
 `react`, `react-dom`, and `@interop/was-client` are peer dependencies.
 
+## Publish
+
+The package is published to npm as `@digitalcredentials/batch-issuer-ui`
+(public access). `prepublishOnly` runs the typecheck and the build, so the
+published tarball always contains a fresh `dist/`.
+
+```bash
+npm version patch   # or minor / major; commits and tags
+npm publish
+git push --follow-tags
+```
+
+The wallet depends on the published version (`^x.y.z` in lcw-front-end's
+package.json), so a panel change reaches the wallet by publishing, then
+bumping the wallet's dependency. For local work on both at once, point the
+wallet at this checkout with `npm link` (or a `file:../batch-issuer-ui`
+dependency) and run `npm run build` here before building the wallet.
+
 ## Notify recipients
 
 Once a batch is saved and has recipient rows, **Notify recipients** (after a
