@@ -72,23 +72,32 @@ npm run typecheck
 
 `react`, `react-dom`, and `@interop/was-client` are peer dependencies.
 
-## Publish
+## Release branch
 
-The package is published to npm as `@digitalcredentials/batch-issuer-ui`
-(public access). `prepublishOnly` runs the typecheck and the build, so the
-published tarball always contains a fresh `dist/`.
+The package is not published to npm yet. Instead, the `Release branch`
+workflow (`.github/workflows/release.yml`) builds `dist/` from every push to
+`main` and force-pushes it, with `package.json`, `LICENSE` and `README.md`,
+to the `release` branch. A consumer depends on that branch:
 
-```bash
-npm version patch   # or minor / major; commits and tags
-npm publish
-git push --follow-tags
+```json
+"@digitalcredentials/batch-issuer-ui": "github:digitalcredentials/batch-issuer-ui#release"
 ```
 
-The wallet depends on the published version (`^x.y.z` in lcw-front-end's
-package.json), so a panel change reaches the wallet by publishing, then
-bumping the wallet's dependency. For local work on both at once, point the
-wallet at this checkout with `npm link` (or a `file:../batch-issuer-ui`
-dependency) and run `npm run build` here before building the wallet.
+`npm install` clones the branch and runs none of this package's scripts;
+the consumer's lock file records the exact commit. To pick up a new build
+in the wallet:
+
+```bash
+npm update @digitalcredentials/batch-issuer-ui   # in lcw-front-end
+```
+
+The package metadata (`repository`, `license`, `publishConfig`,
+`prepublishOnly`) is in place for an npm release later; nothing here depends
+on it.
+
+For local work on the panel and the wallet at once, point the wallet at this
+checkout with a `file:../batch-issuer-ui` dependency (or `npm link`) and run
+`npm run build` here before building the wallet.
 
 ## Notify recipients
 
