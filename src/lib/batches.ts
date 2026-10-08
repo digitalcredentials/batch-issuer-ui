@@ -1,8 +1,9 @@
 import type { BatchIssuerAdapter } from '../adapter'
 import type { Batch } from './types'
 
-// Every batch lives in its own WAS space, registered with type 'batch'. The
-// batch document itself is one JSON resource inside that space.
+// Every batch lives in its own WAS space (a Space whose type array carries
+// "BatchSpace"; the wallet reports it as type 'batch'). The batch document
+// itself is one JSON resource inside that space.
 const COLLECTION_ID = 'batch'
 const RESOURCE_ID = 'batch.json'
 
@@ -33,24 +34,22 @@ function batchCollection(
 }
 
 // Saves the batch into its own space, creating (and registering) that space
-// on the first save.
+// and its batch collection on the first save. The collection is plaintext by
+// design: the issuer lambdas read and write batch collections server-side.
 export async function saveBatch(adapter: BatchIssuerAdapter, batch: Batch): Promise<Batch> {
   const client = await getClient(adapter)
-  const spaceUrl = batch.spaceUrl || (await adapter.spaces.create('batch', batch.name))
+  let spaceUrl = batch.spaceUrl
+  if (!spaceUrl) {
+    spaceUrl = await adapter.spaces.create('batch', batch.name)
+    const parsed = parseSpaceUrl(spaceUrl)
+    if (!parsed) {
+      throw new Error(`Not a space URL: ${spaceUrl}`)
+    }
+    await client.space(parsed.spaceId).createCollection({ id: COLLECTION_ID, name: 'Batch' })
+  }
   const stored: Batch = { ...batch, spaceUrl, updatedAt: new Date().toISOString() }
   const data = JSON.parse(JSON.stringify(stored))
-  const collection = batchCollection(client, spaceUrl)
-  try {
-    await collection.put(RESOURCE_ID, data)
-  } catch {
-    // First write into a fresh batch space: the collection has no description
-    // yet, and an encryption-capable client refuses to write into a collection
-    // whose description it cannot read. force acknowledges this configure is
-    // creating the collection (plaintext by design: the issuer lambdas read
-    // and write batch collections server-side), not overwriting one.
-    await collection.configure({ name: 'Batch', force: true })
-    await collection.put(RESOURCE_ID, data)
-  }
+  await batchCollection(client, spaceUrl).put(RESOURCE_ID, data)
   return stored
 }
 
