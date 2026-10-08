@@ -34,7 +34,7 @@
     "prepublishOnly": "npm run typecheck && npm run build"
   },
   "peerDependencies": {
-    "@interop/was-client": ">=0.41.0",
+    "@interop/was-client": ">=0.93.0",
     "react": ">=19",
     "react-dom": ">=19"
   },
@@ -42,7 +42,7 @@
     "papaparse": "^5.4.1"
   },
   "devDependencies": {
-    "@interop/was-client": "^0.41.0",
+    "@interop/was-client": "^0.93.1",
     "@types/papaparse": "^5.3.14",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

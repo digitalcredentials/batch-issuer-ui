@@ -20,11 +20,11 @@ this package knows nothing about login, localStorage, or env vars.
   insert rows anywhere, or append new ones. Required template columns missing
   from the CSV are flagged.
 - **One WAS space per batch**: the first save creates a brand-new space
-  (controlled by the wallet's DID) through the WAS server's `POST /spaces`,
-  registered with `type: 'batch'` in the spaces registry, and writes the batch
-  document to `batch/batch.json` in that space. The batch list is the
-  registry's batch-type spaces; deleting a batch deletes its whole space
-  (registry row + bucket).
+  (controlled by the wallet's DID) through the WAS server's `POST /spaces/`,
+  typed `["Space", "BatchSpace"]` (the wallet reports it as `type: 'batch'`),
+  creates its plaintext `batch` collection, and writes the batch document to
+  `batch/batch.json`. The batch list is the account's batch-type spaces;
+  deleting a batch deletes its whole space (registry row + bucket).
 - **Per-credential revocation**: the batch's activity log shows each
   credential's progress (emailed, collected) and, once collected, a **Revoke**
   button — the revocation token recorded in the log at collection time is the
