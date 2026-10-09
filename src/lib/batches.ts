@@ -163,6 +163,7 @@ export async function listBatches(adapter: BatchIssuerAdapter): Promise<Batch[]>
         name: space.name ?? '',
         description: '',
         issuer: { name: '' },
+        achievementId: '',
         templateId: '',
         columns: [],
         rows: [],

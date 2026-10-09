@@ -1,7 +1,8 @@
 export interface BatchIssuerDetails {
   name: string
   url?: string
-  logo?: string
+  // The issuer's logo URL; `issuer.image` on the credential.
+  image?: string
 }
 
 // One batch of credentials-to-be: the metadata entered in the form plus the
@@ -15,6 +16,11 @@ export interface Batch {
   name: string
   description: string
   issuer: BatchIssuerDetails
+  // The credential's image URL (the Open Badges achievement image).
+  image?: string
+  // The id of the achievement every credential in the batch awards, minted
+  // once per batch so the credentials share it.
+  achievementId: string
   templateId: string
   columns: string[]
   // One row per recipient, keyed by the CSV columns. `credId` is a reserved
@@ -51,6 +57,7 @@ export function newBatch(): Batch {
     name: '',
     description: '',
     issuer: { name: '' },
+    achievementId: `urn:uuid:${crypto.randomUUID()}`,
     templateId: '',
     columns: [],
     rows: [],

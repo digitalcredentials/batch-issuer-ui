@@ -398,16 +398,38 @@ export default function BatchEditor({
           <div className="flex items-center gap-3">
             <input
               type="url"
-              value={batch.issuer.logo ?? ''}
-              onChange={(e) => updateIssuer({ logo: e.target.value || undefined })}
+              value={batch.issuer.image ?? ''}
+              onChange={(e) => updateIssuer({ image: e.target.value || undefined })}
               disabled={notified}
               placeholder="https://summit.example.org/logo.png"
               className={inputClass}
             />
-            {batch.issuer.logo && (
+            {batch.issuer.image && (
               <img
-                src={batch.issuer.logo}
+                src={batch.issuer.image}
                 alt="Issuer logo preview"
+                className="h-10 w-10 shrink-0 rounded-md border border-slate-200 object-contain"
+              />
+            )}
+          </div>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-slate-700">
+            Credential image URL <span className="font-normal text-slate-400">(optional)</span>
+          </span>
+          <div className="flex items-center gap-3">
+            <input
+              type="url"
+              value={batch.image ?? ''}
+              onChange={(e) => update({ image: e.target.value || undefined })}
+              disabled={notified}
+              placeholder="https://summit.example.org/badge.png"
+              className={inputClass}
+            />
+            {batch.image && (
+              <img
+                src={batch.image}
+                alt="Credential image preview"
                 className="h-10 w-10 shrink-0 rounded-md border border-slate-200 object-contain"
               />
             )}

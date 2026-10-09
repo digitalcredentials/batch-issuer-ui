@@ -11,7 +11,7 @@ this package knows nothing about login, localStorage, or env vars.
 
 ## What it does
 
-- **Create and edit batches** with: batch name, batch description, issuer name,
+- **Create and edit batches** with: batch name, batch description, credential image URL, issuer name,
   issuer URL (optional), issuer logo URL (optional, previewed), and a
   **template** picked from the [credential-templates](../credential-templates)
   API (`GET /templates`).
