@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { BatchIssuerAdapter } from '../adapter'
 import { saveBatch, deleteBatch, loadBatchLog, recipientsNotified, revokeCredential, type BatchLog } from '../lib/batches'
 import { parseCsvFile } from '../lib/csv'
+import { describeFailure } from '../lib/errors'
 import { fetchTemplates } from '../lib/templates'
 import type { Batch, TemplateInfo } from '../lib/types'
 import RowGrid from './RowGrid'
@@ -65,7 +66,7 @@ export default function BatchEditor({
     try {
       const { recipientRows, failures } = await adapter.notifyRecipients({ ...batch, rows: [row] })
       if (failures.length) {
-        setError(`The resend failed: ${failures[0].reason}`)
+        setError(describeFailure('resend', failures[0].reason))
         return
       }
       const fresh = Object.keys(recipientRows ?? {})[0]
@@ -82,7 +83,7 @@ export default function BatchEditor({
         await refreshLog(batch.spaceUrl)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The resend failed.')
+      setError(describeFailure('resend', err))
     } finally {
       setResending(null)
     }
@@ -96,15 +97,17 @@ export default function BatchEditor({
   useEffect(() => {
     fetchTemplates(adapter.templatesApiBase).then(setTemplates, (err) => {
       setTemplates([])
-      setError(err instanceof Error ? err.message : 'Failed to load templates.')
+      setError(describeFailure('load-templates', err))
     })
   }, [adapter])
 
   async function refreshLog(spaceUrl: string) {
     try {
       setLog(await loadBatchLog(adapter, spaceUrl))
-    } catch {
-      // No log (or unreadable) just means no activity to show
+    } catch (err) {
+      // No log (or unreadable) just means no activity to show; nothing is
+      // said to the person, so the detail only goes to the console
+      console.error('Batch issuer: loading the activity log failed', err)
     }
   }
 
@@ -127,7 +130,7 @@ export default function BatchEditor({
       await revokeCredential(adapter, batch.spaceUrl, credId, token)
       await refreshLog(batch.spaceUrl)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The revocation failed.')
+      setError(describeFailure('revoke', err))
     } finally {
       setRevoking(null)
     }
@@ -179,7 +182,7 @@ export default function BatchEditor({
       setBatch(stored)
       setSavedAt(stored.updatedAt)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save batch.')
+      setError(describeFailure('save', err))
     } finally {
       setSaving(false)
     }
@@ -200,9 +203,15 @@ export default function BatchEditor({
       const { sent, failures, recipientRows } = await adapter.notifyRecipients(batch)
       setNotice(`Emailed ${sent} recipient${sent === 1 ? '' : 's'}.`)
       if (failures.length) {
+        // The per-row reasons come from the notify service and read like
+        // transport errors, so they go to the console and the person sees
+        // which rows failed. Not "try again": the batch-wide button emails
+        // every recipient again, not just these rows.
+        console.error('Batch issuer: notify failed for some rows', failures)
         setError(
-          `${failures.length} row${failures.length === 1 ? '' : 's'} failed: ` +
-            failures.map(({ row, reason }) => `row ${row + 1} (${reason})`).join('; ')
+          `${failures.length} row${failures.length === 1 ? '' : 's'} could not be notified (` +
+            failures.map(({ row }) => `row ${row + 1}`).join(', ') +
+            "). Check those rows' email addresses. Resending notifications emails every recipient again."
         )
       }
       // Write each staged credId onto its own row in the batch document, so
@@ -219,11 +228,20 @@ export default function BatchEditor({
           if (!credId) return row
           return { ...row, credId: row.credId ? `${row.credId},${credId}` : credId }
         })
-        const stored = await saveBatch(adapter, { ...batch, rows })
-        setBatch(stored)
+        try {
+          const stored = await saveBatch(adapter, { ...batch, rows })
+          setBatch(stored)
+        } catch (err) {
+          // The emails already went out; only recording them on the rows
+          // failed, so saying "could not be notified" would be untrue.
+          describeFailure('save', err)
+          setError(
+            'The recipients were emailed, but the batch could not be updated to record it. Check the activity log before resending.'
+          )
+        }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to notify recipients.')
+      setError(describeFailure('notify', err))
     } finally {
       setNotifying(false)
       // The notify run appended to the batch's log; reload it so the form
@@ -248,7 +266,7 @@ export default function BatchEditor({
       await deleteBatch(adapter, batch)
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete batch.')
+      setError(describeFailure('delete', err))
       setDeleting(false)
     }
   }
@@ -324,10 +342,6 @@ export default function BatchEditor({
       {error && <p className="mb-4 rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
       {notice && (
         <p className="mb-4 rounded-md bg-green-50 px-4 py-2 text-sm text-green-800">{notice}</p>
-      )}
-
-      {batch.spaceUrl && (
-        <p className="mb-4 text-xs text-slate-400">Batch space: {batch.spaceUrl}</p>
       )}
 
       <section className="mb-8 rounded-xl border border-slate-200 bg-white">
