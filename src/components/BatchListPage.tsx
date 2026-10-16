@@ -4,12 +4,17 @@ import { listBatches } from '../lib/batches'
 import { describeFailure } from '../lib/errors'
 import { newBatch, type Batch } from '../lib/types'
 
+// openError: the panel sets this when a batch the host asked it to open
+// straight away could not be loaded, so the person who chose that batch is
+// told why they are looking at the list instead.
 export default function BatchListPage({
   adapter,
   onEdit,
+  openError,
 }: {
   adapter: BatchIssuerAdapter
   onEdit: (batch: Batch) => void
+  openError?: string
 }) {
   const [batches, setBatches] = useState<Batch[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -33,6 +38,8 @@ export default function BatchListPage({
           New batch
         </button>
       </div>
+
+      {openError && <p className="mb-4 text-sm text-red-600">{openError}</p>}
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 

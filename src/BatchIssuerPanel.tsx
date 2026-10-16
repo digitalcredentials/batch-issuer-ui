@@ -2,17 +2,19 @@ import { useEffect, useState } from 'react'
 import type { BatchIssuerAdapter } from './adapter'
 import type { Batch } from './lib/types'
 import { loadBatch } from './lib/batches'
+import { describeFailure } from './lib/errors'
 import BatchListPage from './components/BatchListPage'
 import BatchEditor from './components/BatchEditor'
 
-type View = { page: 'loading' } | { page: 'list' } | { page: 'edit'; batch: Batch }
+type View = { page: 'loading' } | { page: 'list'; error?: string } | { page: 'edit'; batch: Batch }
 
 // The batch issuer panel: create and edit batches of credentials to issue.
 // The host (the wallet) supplies session, spaces API, and templates API via
 // the adapter and mounts this inside its own chrome. When the host passes
 // initialSpaceUrl (e.g. the user chose a batch space in the spaces view), the
-// panel opens straight into that space's batch; a batch that cannot be loaded
-// falls back to the list.
+// panel opens straight into that space's batch. If the load fails, it falls
+// back to the list and says there that the batch could not be opened; a space
+// that holds no batch falls back to the list without a message.
 export default function BatchIssuerPanel({
   adapter,
   initialSpaceUrl,
@@ -35,9 +37,9 @@ export default function BatchIssuerPanel({
         }
       })
       .catch((err) => {
-        console.error('Batch issuer: load-batch failed', err)
+        const error = describeFailure('open-batch', err)
         if (!cancelled) {
-          setView({ page: 'list' })
+          setView({ page: 'list', error })
         }
       })
     return () => {
@@ -48,7 +50,11 @@ export default function BatchIssuerPanel({
   return view.page === 'loading' ? (
     <p className="text-sm text-slate-500">Loading batch…</p>
   ) : view.page === 'list' ? (
-    <BatchListPage adapter={adapter} onEdit={(batch) => setView({ page: 'edit', batch })} />
+    <BatchListPage
+      adapter={adapter}
+      openError={view.error}
+      onEdit={(batch) => setView({ page: 'edit', batch })}
+    />
   ) : (
     <BatchEditor
       adapter={adapter}

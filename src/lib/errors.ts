@@ -10,6 +10,7 @@
 export type RequestAction =
   | 'load-batches'
   | 'load-templates'
+  | 'open-batch'
   | 'save'
   | 'notify'
   | 'resend'
@@ -19,6 +20,7 @@ export type RequestAction =
 const FAILED: Record<RequestAction, string> = {
   'load-batches': 'The batches could not be loaded.',
   'load-templates': 'The templates could not be loaded.',
+  'open-batch': 'The batch could not be opened.',
   save: 'The batch could not be saved.',
   notify: 'The recipients could not be notified.',
   resend: 'The notification could not be resent.',
