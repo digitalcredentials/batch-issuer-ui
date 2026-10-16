@@ -135,14 +135,23 @@ export async function revokeCredential(
       throw new Error(`Not a space URL: ${spaceUrl}`)
     }
     const logs = client.space(parsed.spaceId).collection('logs')
-    const data = await logs.get('log.json')
-    const log = (data && !(data instanceof Blob) ? data : { entries: [], credentials: {} }) as BatchLog
+    const read = await logs.resource('log.json').getWithEtag()
+    if (read && read.data instanceof Blob) {
+      throw new Error('The activity log is not JSON.')
+    }
+    const log = (read ? read.data : { entries: [], credentials: {} }) as unknown as BatchLog
     log.credentials ??= {}
     log.credentials[credId] = {
       ...log.credentials[credId],
       revokedAt: new Date().toISOString(),
     }
-    await logs.put('log.json', JSON.parse(JSON.stringify(log)) as Parameters<typeof logs.put>[1])
+    // The back end writes this log too (emailSentAt, collectedAt), and WAS
+    // answers 404 for a log it hides as well as a missing one. So write only
+    // the version read, or create only when there still is none: a refused
+    // write fails as a log failure instead of losing someone else's entries.
+    await logs.put('log.json', JSON.parse(JSON.stringify(log)) as Parameters<typeof logs.put>[1], {
+      ...(read ? (read.etag ? { ifMatch: read.etag } : {}) : { ifNoneMatch: true }),
+    })
   } catch (err) {
     throw new RevocationLogError(err)
   }
