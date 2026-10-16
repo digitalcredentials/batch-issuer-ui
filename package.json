@@ -1,0 +1,55 @@
+{
+  "name": "@digitalcredentials/batch-issuer-ui",
+  "version": "0.1.0",
+  "description": "Batch credential issuer panel for the Learner Credential Wallet",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digitalcredentials/batch-issuer-ui.git"
+  },
+  "author": "Digital Credentials Consortium",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/digitalcredentials/batch-issuer-ui/issues"
+  },
+  "homepage": "https://github.com/digitalcredentials/batch-issuer-ui#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "peerDependencies": {
+    "@interop/was-client": ">=0.93.0",
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
+  "dependencies": {
+    "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "@interop/was-client": "^0.93.1",
+    "@types/papaparse": "^5.3.14",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0"
+  }
+}
