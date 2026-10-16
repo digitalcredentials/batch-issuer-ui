@@ -34,7 +34,8 @@ export default function BatchIssuerPanel({
           setView(batch ? { page: 'edit', batch: { ...batch, spaceUrl: initialSpaceUrl } } : { page: 'list' })
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Batch issuer: load-batch failed', err)
         if (!cancelled) {
           setView({ page: 'list' })
         }

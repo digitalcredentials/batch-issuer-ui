@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { BatchIssuerAdapter } from '../adapter'
 import { listBatches } from '../lib/batches'
+import { describeFailure } from '../lib/errors'
 import { newBatch, type Batch } from '../lib/types'
 
 export default function BatchListPage({
@@ -15,7 +16,7 @@ export default function BatchListPage({
 
   useEffect(() => {
     listBatches(adapter).then(setBatches, (err) => {
-      setError(err instanceof Error ? err.message : 'Failed to load batches.')
+      setError(describeFailure('load-batches', err))
       setBatches([])
     })
   }, [adapter])
