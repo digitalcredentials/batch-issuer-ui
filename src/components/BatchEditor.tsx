@@ -205,12 +205,13 @@ export default function BatchEditor({
       if (failures.length) {
         // The per-row reasons come from the notify service and read like
         // transport errors, so they go to the console and the person sees
-        // which rows to retry.
+        // which rows failed. Not "try again": the batch-wide button emails
+        // every recipient again, not just these rows.
         console.error('Batch issuer: notify failed for some rows', failures)
         setError(
           `${failures.length} row${failures.length === 1 ? '' : 's'} could not be notified (` +
             failures.map(({ row }) => `row ${row + 1}`).join(', ') +
-            '). Please try again.'
+            "). Check those rows' email addresses. Resending notifications emails every recipient again."
         )
       }
       // Write each staged credId onto its own row in the batch document, so
@@ -227,8 +228,17 @@ export default function BatchEditor({
           if (!credId) return row
           return { ...row, credId: row.credId ? `${row.credId},${credId}` : credId }
         })
-        const stored = await saveBatch(adapter, { ...batch, rows })
-        setBatch(stored)
+        try {
+          const stored = await saveBatch(adapter, { ...batch, rows })
+          setBatch(stored)
+        } catch (err) {
+          // The emails already went out; only recording them on the rows
+          // failed, so saying "could not be notified" would be untrue.
+          describeFailure('save', err)
+          setError(
+            'The recipients were emailed, but the batch could not be updated to record it. Check the activity log before resending.'
+          )
+        }
       }
     } catch (err) {
       setError(describeFailure('notify', err))

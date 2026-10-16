@@ -30,19 +30,20 @@ const FAILED: Record<RequestAction, string> = {
 // create a space with.
 const COUPON_REQUIRED = 'https://github.com/digitalcredentials/was-server-aws#coupon-required'
 
+// Covers an account never set up for storage and one whose allowance has run
+// out or expired: the server answers both with the same coupon-required 403.
 const NO_BATCH_STORAGE =
-  'This account is not set up to create batch storage. Contact whoever runs this deployment.'
+  "This account can't create batch storage right now. Contact whoever runs this deployment."
+
+const SESSION_ENDED = 'Your session has ended. Sign in again, then try once more.'
 
 // Thrown when the first save of a batch cannot create the batch's own storage
 // space, so a refusal there can be told apart from a later write. Carries
-// whatever the adapter threw.
+// whatever the adapter threw as its cause.
 export class SpaceCreationError extends Error {
-  readonly original: unknown
-
-  constructor(original: unknown) {
-    super('The batch space could not be created.')
+  constructor(cause: unknown) {
+    super('The batch space could not be created.', { cause })
     this.name = 'SpaceCreationError'
-    this.original = original
   }
 }
 
@@ -50,26 +51,44 @@ export class SpaceCreationError extends Error {
 // signed-request client puts the status on the error itself and the server's
 // parsed problem body on `data`; WasError carries `status` and `type` as its
 // own properties. Any of it may be missing, so read it all defensively.
-function readProblem(error: unknown): { status?: number; type?: string } {
+function readProblem(error: unknown): { status?: number; type?: string; message?: string } {
   if (typeof error !== 'object' || error === null) {
     return {}
   }
-  const { status, type, data } = error as { status?: unknown; type?: unknown; data?: unknown }
+  const { status, type, data, message } = error as {
+    status?: unknown
+    type?: unknown
+    data?: unknown
+    message?: unknown
+  }
   const body = typeof data === 'object' && data !== null ? (data as { type?: unknown }) : undefined
   const problemType =
     typeof type === 'string' ? type : typeof body?.type === 'string' ? body.type : undefined
   return {
     status: typeof status === 'number' ? status : undefined,
     type: problemType,
+    message: typeof message === 'string' ? message : undefined,
   }
+}
+
+// A signed-out or expired session: the wallet's adapter throws
+// Error('UNAUTHORIZED'), this package throws 'Not logged in.' when there is no
+// session, and a server may answer 401. Retrying cannot help; signing in can.
+function isSessionEnded(error: unknown): boolean {
+  const { status, message } = readProblem(error)
+  return status === 401 || message === 'UNAUTHORIZED' || message === 'Not logged in.'
 }
 
 // Turns a failed request into a sentence saying what failed and what the
 // person can do, and logs the raw error so the detail is not lost.
 export function describeFailure(action: RequestAction, error: unknown): string {
   console.error(`Batch issuer: ${action} failed`, error)
+  const cause = error instanceof SpaceCreationError ? error.cause : error
+  if (isSessionEnded(cause)) {
+    return SESSION_ENDED
+  }
   if (error instanceof SpaceCreationError) {
-    const { status, type } = readProblem(error.original)
+    const { status, type } = readProblem(cause)
     // Creating the batch's space is refused with 403 on a deployment where
     // the account is not set up to create storage. The coupon-required
     // problem type confirms that when the server sent a body; a bare 403
