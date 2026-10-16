@@ -47,6 +47,16 @@ export class SpaceCreationError extends Error {
   }
 }
 
+// Thrown when the credential's status position was revoked but recording that
+// in the batch's activity log failed, so the editor can say the revocation
+// itself went through. Carries whatever the storage client threw as its cause.
+export class RevocationLogError extends Error {
+  constructor(cause: unknown) {
+    super('The activity log could not be updated.', { cause })
+    this.name = 'RevocationLogError'
+  }
+}
+
 // The HTTP status and problem type as read off an unknown error. The wallet's
 // signed-request client puts the status on the error itself and the server's
 // parsed problem body on `data`; WasError carries `status` and `type` as its
