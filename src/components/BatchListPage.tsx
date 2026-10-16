@@ -39,7 +39,10 @@ export default function BatchListPage({
         </button>
       </div>
 
-      {openError && <p className="mb-4 text-sm text-red-600">{openError}</p>}
+      {/* A signed-out session fails both loads with the same sentence; say it once */}
+      {openError && openError !== error && (
+        <p className="mb-4 text-sm text-red-600">{openError}</p>
+      )}
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
