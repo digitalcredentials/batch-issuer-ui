@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { BatchIssuerAdapter } from '../adapter'
 import { saveBatch, deleteBatch, loadBatchLog, recipientsNotified, revokeCredential, type BatchLog } from '../lib/batches'
 import { parseCsvFile } from '../lib/csv'
-import { describeFailure } from '../lib/errors'
+import { describeFailure, RevocationLogError } from '../lib/errors'
 import { fetchTemplates } from '../lib/templates'
 import type { Batch, TemplateInfo } from '../lib/types'
 import RowGrid from './RowGrid'
@@ -130,6 +130,29 @@ export default function BatchEditor({
       await revokeCredential(adapter, batch.spaceUrl, credId, token)
       await refreshLog(batch.spaceUrl)
     } catch (err) {
+      if (err instanceof RevocationLogError) {
+        // The credential is revoked; only the log write failed. Saying it
+        // could not be revoked would be untrue, and a retry would spend the
+        // same revocation token again. describeFailure is called for its
+        // logging of the raw error; its sentence is the wrong one here, even
+        // when the session has ended.
+        describeFailure('revoke', err)
+        setError('The credential was revoked, but the activity log could not be updated.')
+        // Record the revocation in the view only: the stored log has no
+        // revokedAt, so reloading it would offer Revoke again.
+        setLog((current) =>
+          current
+            ? {
+                ...current,
+                credentials: {
+                  ...current.credentials,
+                  [credId]: { ...current.credentials[credId], revokedAt: new Date().toISOString() },
+                },
+              }
+            : current
+        )
+        return
+      }
       setError(describeFailure('revoke', err))
     } finally {
       setRevoking(null)

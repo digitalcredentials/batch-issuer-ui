@@ -1,5 +1,5 @@
 import type { BatchIssuerAdapter } from '../adapter'
-import { SpaceCreationError } from './errors'
+import { RevocationLogError, SpaceCreationError } from './errors'
 import type { Batch } from './types'
 
 // Every batch lives in its own WAS space (a Space whose type array carries
@@ -123,20 +123,38 @@ export async function revokeCredential(
   token: string
 ): Promise<void> {
   await adapter.revokeStatus(token)
-  const client = await getClient(adapter)
-  const parsed = parseSpaceUrl(spaceUrl)
-  if (!parsed) {
-    throw new Error(`Not a space URL: ${spaceUrl}`)
+  // Past this point the credential is revoked, so every failure is marked as
+  // a log failure: the editor must not tell the person the revocation failed
+  // and invite a retry that would spend the same token again. A read that
+  // fails for any reason other than a missing log (the client answers null on
+  // a 404) throws here rather than writing a fresh log over the existing one.
+  try {
+    const client = await getClient(adapter)
+    const parsed = parseSpaceUrl(spaceUrl)
+    if (!parsed) {
+      throw new Error(`Not a space URL: ${spaceUrl}`)
+    }
+    const logs = client.space(parsed.spaceId).collection('logs')
+    const read = await logs.resource('log.json').getWithEtag()
+    if (read && read.data instanceof Blob) {
+      throw new Error('The activity log is not JSON.')
+    }
+    const log = (read ? read.data : { entries: [], credentials: {} }) as unknown as BatchLog
+    log.credentials ??= {}
+    log.credentials[credId] = {
+      ...log.credentials[credId],
+      revokedAt: new Date().toISOString(),
+    }
+    // The back end writes this log too (emailSentAt, collectedAt), and WAS
+    // answers 404 for a log it hides as well as a missing one. So write only
+    // the version read, or create only when there still is none: a refused
+    // write fails as a log failure instead of losing someone else's entries.
+    await logs.put('log.json', JSON.parse(JSON.stringify(log)) as Parameters<typeof logs.put>[1], {
+      ...(read ? (read.etag ? { ifMatch: read.etag } : {}) : { ifNoneMatch: true }),
+    })
+  } catch (err) {
+    throw new RevocationLogError(err)
   }
-  const logs = client.space(parsed.spaceId).collection('logs')
-  const data = await logs.get('log.json').catch(() => null)
-  const log = (data && !(data instanceof Blob) ? data : { entries: [], credentials: {} }) as BatchLog
-  log.credentials ??= {}
-  log.credentials[credId] = {
-    ...log.credentials[credId],
-    revokedAt: new Date().toISOString(),
-  }
-  await logs.put('log.json', JSON.parse(JSON.stringify(log)) as Parameters<typeof logs.put>[1])
 }
 
 // Deleting a batch deletes its whole space: the back end removes the registry
