@@ -14,8 +14,9 @@ type Mode = 'sign-in' | 'create'
 
 // Signing in, and creating an issuer key the first time. Both derive the same
 // key from the email and passphrase in this browser; creating also makes the
-// issuer's own space with the registration code, and signing in requires that
-// space, which is how a mistyped passphrase is told from a new issuer.
+// issuer's own space with the registration code, the one time the code is
+// used, and signing in requires that space, which is how a mistyped
+// passphrase is told from a new issuer.
 export default function SignInPage({ onSignedIn }: { onSignedIn: (session: IssuerSession) => void }) {
   const [mode, setMode] = useState<Mode>('sign-in')
   const [email, setEmail] = useState('')
@@ -153,8 +154,8 @@ export default function SignInPage({ onSignedIn }: { onSignedIn: (session: Issue
                     className={inputClass}
                   />
                   <p className="mt-1 text-xs text-slate-500">
-                    The code you were given for this deployment. The storage server requires it before it
-                    creates storage for your batches.
+                    The code you were given for this deployment. It is used once, now, to create your
+                    issuer key&#39;s storage. It is not kept, and you will not be asked for it again.
                   </p>
                 </div>
               </>

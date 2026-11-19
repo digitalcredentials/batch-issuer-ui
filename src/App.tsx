@@ -25,7 +25,6 @@ export default function App() {
   return (
     <AppShell
       session={session}
-      onSessionChange={setSession}
       onSignOut={() => {
         clearSession()
         setSession(null)

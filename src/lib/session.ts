@@ -9,11 +9,9 @@ export interface IssuerSession {
   did: string
   // The exported Ed25519 key pair; Ed25519VerificationKey.from reads it back
   exportedKeyPair: object
-  // The issuer's own space, which holds its profile
+  // The issuer's own space, which holds its profile and under which the
+  // batch spaces are created
   issuerSpaceUrl: string
-  // The code the PWS server redeems when a space is created; '' when the
-  // profile holds none
-  registrationCode: string
 }
 
 export function getSession(): IssuerSession | null {

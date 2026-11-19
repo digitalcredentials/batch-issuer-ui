@@ -7,6 +7,10 @@ import { getSession } from './session'
 // the issuer's did:key. There are two kinds, told apart by the type array the
 // server keeps for each space: the issuer's own space, one per key, and one
 // space per batch.
+//
+// The issuer's own space is created with the registration code, which makes
+// it the issuer's account on the server. Every batch space is created under
+// it, with the issuer's key and no code.
 export const ISSUER_SPACE_TYPE = 'IssuerSpace'
 export const BATCH_SPACE_TYPE = 'BatchSpace'
 
@@ -66,20 +70,42 @@ export async function listSpaces(client: PwsClient): Promise<SpaceEntry[]> {
   })
 }
 
-// Creates a space of the given kind under the signing key; resolves to its
-// URL. This server creates a space only for a coupon it accepts (the
-// registration code), which pws-client's createSpace() has no place for, so
-// the request is made here. A code the server does not accept, an empty one
-// included, is its coupon-required 403 (registrationCodeRefused in
-// errors.ts).
-export async function createSpace(
+// Creates the issuer's own space under the signing key; resolves to its URL.
+// This is the one request the registration code is sent in: the server
+// creates the space for a code it accepts (its "coupon", which pws-client's
+// createSpace() has no place for, so the request is made here), and from
+// then on treats the space as the issuer's account. A code the server does
+// not accept, an empty one included, is its coupon-required 403
+// (registrationCodeRefused in errors.ts).
+export async function createIssuerSpace(
   client: PwsClient,
-  { type, name, registrationCode }: { type: string; name: string; registrationCode: string }
+  { name, registrationCode }: { name: string; registrationCode: string }
 ): Promise<string> {
   const response = await client.request({
     url: `${config.pwsBase}/spaces/`,
     method: 'POST',
-    json: { controller: client.controllerDid, name, type: ['Space', type], coupon: registrationCode },
+    json: {
+      controller: client.controllerDid,
+      name,
+      type: ['Space', ISSUER_SPACE_TYPE],
+      coupon: registrationCode,
+    },
+  })
+  return spaceUrlOf((response.data as { id: string }).id)
+}
+
+// Creates a batch space under the issuer's own space; resolves to its URL.
+// What authorizes it is the issuer's key, which controls the issuer's space
+// and signs the request: no code is sent. The server creates spaces this way
+// only under a space that was itself created with a registration code.
+export async function createBatchSpace(
+  client: PwsClient,
+  { issuerSpaceUrl, name }: { issuerSpaceUrl: string; name: string }
+): Promise<string> {
+  const response = await client.request({
+    url: `${issuerSpaceUrl}/spaces`,
+    method: 'POST',
+    json: { controller: client.controllerDid, name, type: ['Space', BATCH_SPACE_TYPE] },
   })
   return spaceUrlOf((response.data as { id: string }).id)
 }
@@ -98,9 +124,6 @@ export async function deleteSpace(client: PwsClient, spaceUrl: string): Promise<
 // issuer's key may read it through the server.
 export interface IssuerProfile {
   email: string
-  // The code the PWS server redeems when a space is created. Kept here so
-  // the issuer enters it once, not in every browser.
-  registrationCode: string
   createdAt: string
   updatedAt: string
 }

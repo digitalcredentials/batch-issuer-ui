@@ -25,26 +25,12 @@ const FAILED: Record<RequestAction, string> = {
   delete: 'The batch could not be deleted.',
 }
 
-// The PWS server's problem type for a space creation whose coupon (the
-// registration code) it does not accept.
+// The PWS server's problem type for the creation of the issuer's own space
+// when it does not accept the registration code (its "coupon"): a code that
+// was never valid, and one that has run out or expired.
 const COUPON_REQUIRED = 'https://github.com/digitalcredentials/was-server-aws#coupon-required'
 
-// Covers a code that was never valid and one that has run out or expired:
-// the server answers both with the same coupon-required 403.
-const NO_BATCH_STORAGE =
-  "The registration code was not accepted, so the batch's storage could not be created. Enter a current code under Registration code, then save again."
-
 const SESSION_ENDED = 'Your session has ended. Sign in again, then try once more.'
-
-// Thrown when the first save of a batch cannot create the batch's own storage
-// space, so a refusal there can be told apart from a later write. Carries
-// whatever the adapter threw as its cause.
-export class SpaceCreationError extends Error {
-  constructor(cause: unknown) {
-    super('The batch space could not be created.', { cause })
-    this.name = 'SpaceCreationError'
-  }
-}
 
 // The HTTP status and problem type as read off an unknown error. The
 // signed-request client puts the status on the error itself and the server's
@@ -78,8 +64,9 @@ function isSessionEnded(error: unknown): boolean {
   return status === 401 || message === 'UNAUTHORIZED' || message === 'Not logged in.'
 }
 
-// True when a space creation was refused over its registration code: the PWS
-// server's coupon-required 403. A bare 403 there means the same thing.
+// True when the creation of the issuer's own space was refused over its
+// registration code: the PWS server's coupon-required 403. A bare 403 there
+// means the same thing. No other request carries the code.
 export function registrationCodeRefused(error: unknown): boolean {
   const { status, type } = readProblem(error)
   return status === 403 || type === COUPON_REQUIRED
@@ -89,12 +76,8 @@ export function registrationCodeRefused(error: unknown): boolean {
 // person can do, and logs the raw error so the detail is not lost.
 export function describeFailure(action: RequestAction, error: unknown): string {
   console.error(`Batch issuer: ${action} failed`, error)
-  const cause = error instanceof SpaceCreationError ? error.cause : error
-  if (isSessionEnded(cause)) {
+  if (isSessionEnded(error)) {
     return SESSION_ENDED
-  }
-  if (error instanceof SpaceCreationError && registrationCodeRefused(cause)) {
-    return NO_BATCH_STORAGE
   }
   return `${FAILED[action]} Please try again.`
 }

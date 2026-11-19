@@ -1,5 +1,4 @@
 import type { BatchIssuerAdapter } from '../adapter'
-import { SpaceCreationError } from './errors'
 import type { Batch } from './types'
 
 // Every batch lives in its own PWS space (a Space whose type array carries
@@ -41,13 +40,7 @@ export async function saveBatch(adapter: BatchIssuerAdapter, batch: Batch): Prom
   const client = await getClient(adapter)
   let spaceUrl = batch.spaceUrl
   if (!spaceUrl) {
-    try {
-      spaceUrl = await adapter.spaces.create('batch', batch.name)
-    } catch (err) {
-      // Marked as a space creation so the editor can say what a refusal here
-      // means: the account may not be allowed to create storage at all.
-      throw new SpaceCreationError(err)
-    }
+    spaceUrl = await adapter.spaces.create('batch', batch.name)
     const parsed = parseSpaceUrl(spaceUrl)
     if (!parsed) {
       throw new Error(`Not a space URL: ${spaceUrl}`)

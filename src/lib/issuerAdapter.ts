@@ -2,7 +2,7 @@ import type { PwsClient } from '@interop/pws-client'
 import type { BatchIssuerAdapter, NotifyResult, SpaceInfo } from '../adapter'
 import type { Batch } from './types'
 import { config } from './config'
-import { BATCH_SPACE_TYPE, createSpace, deleteSpace, listSpaces, sessionClient } from './pws'
+import { BATCH_SPACE_TYPE, createBatchSpace, deleteSpace, listSpaces, sessionClient } from './pws'
 import { getSession } from './session'
 
 // The status list service's POST /revoke. The revocation token is the
@@ -51,12 +51,16 @@ export function createIssuerAdapter(onUnauthorized: () => void): BatchIssuerAdap
       return client ? { client } : null
     },
     spaces: {
-      create: async (_type, name) =>
-        createSpace(await requireClient(), {
-          type: BATCH_SPACE_TYPE,
-          name,
-          registrationCode: getSession()?.registrationCode ?? '',
-        }),
+      // A batch space, under the issuer's own space
+      create: async (_type, name) => {
+        const client = await requireClient()
+        const issuerSpaceUrl = getSession()?.issuerSpaceUrl
+        if (!issuerSpaceUrl) {
+          onUnauthorized()
+          throw new Error('UNAUTHORIZED')
+        }
+        return createBatchSpace(client, { issuerSpaceUrl, name })
+      },
       list: async () =>
         (await listSpaces(await requireClient())).map(
           ({ url, types, name, createdAt }): SpaceInfo => ({
