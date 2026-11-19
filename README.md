@@ -83,6 +83,13 @@ space is a `POST /space/{issuer space}/spaces`, signed by the issuer's key,
 which controls the issuer space. A code that later runs out or expires
 changes nothing for an issuer who already has a key.
 
+The server limits how many spaces one account holds that were created under
+it (its `MaxSpacesPerAccount`, 100 on the sandbox), which here is a limit on
+the batches one issuer key has at once. At the limit the first save of a
+new batch is refused (`507 quota-exceeded`) and the editor says to delete a
+batch that is no longer needed; deleting a batch deletes its space and
+frees its place.
+
 The signed-in key is kept in `sessionStorage` (`src/lib/session.ts`), so it
 is discarded when the tab closes.
 
@@ -140,7 +147,8 @@ npm test
 ```
 
 The key derivation, checked against an independent PBKDF2 and Ed25519
-computation with `node:crypto`.
+computation with `node:crypto`, and the sentences a failed request is
+turned into (`tests/errors.test.ts`).
 
 ```bash
 REGISTRATION_CODE=... npm run test:e2e

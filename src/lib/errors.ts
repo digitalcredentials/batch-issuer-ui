@@ -30,6 +30,14 @@ const FAILED: Record<RequestAction, string> = {
 // was never valid, and one that has run out or expired.
 const COUPON_REQUIRED = 'https://github.com/digitalcredentials/was-server-aws#coupon-required'
 
+// The PWS server's problem type when the issuer already holds as many
+// spaces created under the issuer's own space as the server allows one
+// account. Each batch has a space of its own, so this is a limit on batches.
+const QUOTA_EXCEEDED = 'https://w3id.org/pws#quota-exceeded'
+
+const TOO_MANY_BATCHES =
+  'You have as many batches as the storage server allows for one issuer key. Delete a batch you no longer need, then save again.'
+
 const SESSION_ENDED = 'Your session has ended. Sign in again, then try once more.'
 
 // The HTTP status and problem type as read off an unknown error. The
@@ -72,12 +80,23 @@ export function registrationCodeRefused(error: unknown): boolean {
   return status === 403 || type === COUPON_REQUIRED
 }
 
+// True when the server refused a new batch space because the issuer is at
+// its limit: 507 with the quota-exceeded problem type. Only the first save
+// of a batch creates a space, so only a save can meet it.
+function isBatchLimitReached(error: unknown): boolean {
+  const { status, type } = readProblem(error)
+  return status === 507 || type === QUOTA_EXCEEDED
+}
+
 // Turns a failed request into a sentence saying what failed and what the
 // person can do, and logs the raw error so the detail is not lost.
 export function describeFailure(action: RequestAction, error: unknown): string {
   console.error(`Batch issuer: ${action} failed`, error)
   if (isSessionEnded(error)) {
     return SESSION_ENDED
+  }
+  if (action === 'save' && isBatchLimitReached(error)) {
+    return TOO_MANY_BATCHES
   }
   return `${FAILED[action]} Please try again.`
 }
