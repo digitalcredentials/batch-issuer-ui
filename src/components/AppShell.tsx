@@ -1,23 +1,18 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { IssuerSession } from '../lib/session'
 import Brand from './Brand'
-import RegistrationCodeDialog from './RegistrationCodeDialog'
 
-// The signed-in page: the header (who is signed in, the registration code,
-// signing out) above the batch screens.
+// The signed-in page: the header (who is signed in, signing out) above the
+// batch screens.
 export default function AppShell({
   session,
-  onSessionChange,
   onSignOut,
   children,
 }: {
   session: IssuerSession
-  onSessionChange: (session: IssuerSession) => void
   onSignOut: () => void
   children: ReactNode
 }) {
-  const [codeOpen, setCodeOpen] = useState(false)
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-slate-200 bg-white">
@@ -32,13 +27,6 @@ export default function AppShell({
             </span>
             <button
               type="button"
-              onClick={() => setCodeOpen(true)}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-            >
-              Registration code
-            </button>
-            <button
-              type="button"
               onClick={onSignOut}
               className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
             >
@@ -48,16 +36,6 @@ export default function AppShell({
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
-      {codeOpen && (
-        <RegistrationCodeDialog
-          session={session}
-          onSaved={(updated) => {
-            onSessionChange(updated)
-            setCodeOpen(false)
-          }}
-          onClose={() => setCodeOpen(false)}
-        />
-      )}
     </div>
   )
 }

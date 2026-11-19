@@ -69,18 +69,19 @@ whether the passphrase was typed correctly. The **issuer space** does
 - **Create an issuer key** (the first time) takes the email, a passphrase of
   at least 12 characters, and a **registration code**. It creates the issuer
   space, a space typed `["Space", "IssuerSpace"]`, with the registration code
-  as the coupon the PWS server requires to create a space, and writes the
-  profile to `profile/issuer.json` in it: the email, the registration code,
-  and when it was made.
+  as the coupon the PWS server requires (`POST /spaces/`), and writes the
+  profile to `profile/issuer.json` in it: the email and when it was made.
 - **Sign in** derives the key and lists its spaces. A key that controls no
   issuer space is refused ("No issuer key matches that email and
   passphrase"), which is what a mistyped passphrase gets.
 
-The registration code is kept in the profile so that every browser the
-issuer signs in from can create batch spaces with it. **Registration code**
-in the page header shows it and replaces it (a code can run out or expire);
-a batch whose space the server refuses to create says to enter a current
-one there.
+The registration code is used in that one request and kept nowhere: not in
+the profile, not in the browser. A space the server creates for a
+registration code is an account to it, and the account's further spaces are
+created under it with a capability on that space and no code. So each batch
+space is a `POST /space/{issuer space}/spaces`, signed by the issuer's key,
+which controls the issuer space. A code that later runs out or expires
+changes nothing for an issuer who already has a key.
 
 The signed-in key is kept in `sessionStorage` (`src/lib/session.ts`), so it
 is discarded when the tab closes.
@@ -89,11 +90,12 @@ is discarded when the tab closes.
 
 | Space | Type | Holds |
 | --- | --- | --- |
-| The issuer space, one per key | `["Space", "IssuerSpace"]` | `profile/issuer.json`: the email, the registration code, timestamps |
+| The issuer space, one per key | `["Space", "IssuerSpace"]` | `profile/issuer.json`: the email, timestamps. To the PWS server this space is the issuer's account |
 | A batch space, one per batch | `["Space", "BatchSpace"]` | `batch/batch.json`: the batch document, recipients included. `logs/log.json`: the activity log, written by the back end. `{credId}/bundle.json`: one KMS-encrypted bundle per staged credential, written by the back end |
 
-The first save of a batch creates its space through the PWS server's
-`POST /spaces/`, creates its `batch` collection and writes the document;
+The first save of a batch creates its space under the issuer space
+(`POST /space/{issuer space}/spaces`), creates its `batch` collection and
+writes the document;
 deleting a batch deletes its whole space (registry row and bucket). The batch
 list is the key's `BatchSpace` spaces. Both collections are plaintext: the
 back end reads and writes a batch space's bucket directly, so the server
@@ -149,8 +151,10 @@ The app end to end in a browser (Playwright), against the local dev server
 or, with `BASE_URL`, a deployed site, and in both cases against the real
 services that build names. It creates an issuer key under a fresh email: a
 registration code the server does not accept is refused, a mistyped
-passphrase is refused, the code is read back from the profile, a batch is
-saved into a space of its own, its one recipient is notified, the activity
+passphrase is refused, the browser does not keep the code, a batch is
+saved into a space of its own created under the issuer space, the code
+went to the server in one request and no other, its one recipient is
+notified, the activity
 log shows the notification, the session is still there after a reload, the
 batch is deleted, and signing out discards the session. It needs a
 registration code the PWS server accepts, and it deletes the spaces it
@@ -196,9 +200,8 @@ verifies the issuer's `did:key` (its README says how).
 
 - `src/App.tsx`: the sign-in page until an issuer key is open in this tab,
   then the batch screens under the page header.
-- `src/pages/SignInPage.tsx`, `src/components/AppShell.tsx`,
-  `src/components/RegistrationCodeDialog.tsx`: the sign-in, the header and
-  the registration code.
+- `src/pages/SignInPage.tsx`, `src/components/AppShell.tsx`: the sign-in
+  (and the one place the registration code is entered) and the header.
 - `src/lib/identity.ts`, `issuer.ts`, `session.ts`, `pws.ts`: the key, the
   sign-in and key creation, the session, and the PWS calls.
 - `src/BatchIssuerPanel.tsx`, `src/components/BatchListPage.tsx`,

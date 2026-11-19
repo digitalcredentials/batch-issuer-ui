@@ -1,7 +1,9 @@
 // The app end to end, in a browser, against real services: the PWS server
 // its build names, and the batch issuer API its build names. It creates an
 // issuer key of its own under a fresh email, so it needs a registration code
-// the PWS server accepts, and it deletes everything it created.
+// the PWS server accepts, and it deletes everything it created. The code is
+// spent once, on the issuer key: the test checks that no other request
+// carries it and that the browser does not keep it.
 //
 //   REGISTRATION_CODE=... npm run test:e2e                      # the local dev server
 //   REGISTRATION_CODE=... BASE_URL=https://batch.lcw-sandbox.org npm run test:e2e
@@ -37,6 +39,45 @@ function capture(page: Page): string[] {
   return noise
 }
 
+// The requests the page sends that carry the registration code in their
+// body ("METHOD /path"), and the ones that create a space. Playwright cannot
+// read the signed-request client's bodies off the network, so the page
+// reports each one as it is handed to fetch; the report goes to this
+// process, where a reload does not lose it.
+interface SpaceRequests {
+  withCode: string[]
+  created: { path: string; body: string }[]
+}
+
+async function watchSpaceCreation(page: Page): Promise<SpaceRequests> {
+  const seen: SpaceRequests = { withCode: [], created: [] }
+  await page.exposeFunction('__reportRequest', (method: string, path: string, body: string) => {
+    if (body.includes(REGISTRATION_CODE!)) {
+      seen.withCode.push(`${method} ${path}`)
+    }
+    if (method === 'POST' && /^\/(spaces\/|space\/[^/]+\/spaces)$/.test(path)) {
+      seen.created.push({ path, body })
+    }
+  })
+  await page.addInitScript(() => {
+    type Reporting = { __reportRequest: (method: string, path: string, body: string) => void }
+    const send = window.fetch.bind(window)
+    window.fetch = (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        void request
+          .clone()
+          .text()
+          .then((body) =>
+            (window as unknown as Reporting).__reportRequest(request.method, new URL(request.url).pathname, body)
+          )
+      }
+      return send(request)
+    }
+  })
+  return seen
+}
+
 async function signIn(page: Page, passphrase = PASSPHRASE) {
   await page.getByLabel('Email').fill(EMAIL)
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase)
@@ -65,6 +106,7 @@ test('refuses an email and passphrase that have no issuer key', async ({ page })
 
 test('creates an issuer key, issues a batch, and signs in again', async ({ page }) => {
   const noise = capture(page)
+  const spaces = await watchSpaceCreation(page)
   try {
     await page.goto('/')
 
@@ -94,32 +136,17 @@ test('creates an issuer key, issues a batch, and signs in again', async ({ page 
       await expect(page.getByRole('heading', { name: 'Credential batches' })).toBeVisible()
     })
 
-    await test.step('the registration code was kept with the key', async () => {
-      await page.getByRole('button', { name: 'Registration code' }).click()
-      const dialog = page.getByRole('dialog', { name: 'Registration code' })
-      await expect(dialog.getByLabel('Registration code')).toHaveValue(REGISTRATION_CODE!)
-      await dialog.getByRole('button', { name: 'Cancel' }).click()
-      await expect(dialog).toHaveCount(0)
+    await test.step('the code is not kept: not in this tab, and nowhere to enter it again', async () => {
+      const stored = await page.evaluate(() => JSON.stringify({ ...sessionStorage, ...localStorage }))
+      expect(stored).toContain(EMAIL)
+      expect(stored).not.toContain(REGISTRATION_CODE!)
+      await expect(page.getByRole('button', { name: 'Registration code' })).toHaveCount(0)
     })
 
     const batchName = `E2E batch ${Date.now()}`
-    const replaceCode = async (code: string) => {
-      await page.getByRole('button', { name: 'Registration code' }).click()
-      const dialog = page.getByRole('dialog', { name: 'Registration code' })
-      await dialog.getByLabel('Registration code').fill(code)
-      await dialog.getByRole('button', { name: 'Save' }).click()
-      await expect(dialog).toHaveCount(0)
-    }
-    await test.step('a batch is not saved while the code is one the server refuses', async () => {
-      await replaceCode('not-a-registration-code')
+    await test.step('a batch is saved into a space of its own, created under the issuer space with no code', async () => {
       await page.getByRole('button', { name: 'New batch' }).click()
       await page.getByLabel('Batch name').fill(batchName)
-      await page.getByRole('button', { name: 'Save batch' }).click()
-      await expect(page.getByText('The registration code was not accepted')).toBeVisible()
-      await replaceCode(REGISTRATION_CODE!)
-    })
-
-    await test.step('a batch is saved into a space of its own', async () => {
       await page.getByLabel('Issuer name').fill('E2E Issuer')
       await page.getByLabel('Template').selectOption('conference')
       await page.getByLabel('CSV').setInputFiles({
@@ -130,6 +157,14 @@ test('creates an issuer key, issues a batch, and signs in again', async ({ page 
       await expect(page.getByText('1 row', { exact: true })).toBeVisible()
       await page.getByRole('button', { name: 'Save batch' }).click()
       await expect(page.getByText('Saved', { exact: true })).toBeVisible()
+      // Three space creations so far: the refused code, the issuer space,
+      // and the batch space, which is a request to the issuer space and
+      // carries no code
+      await expect
+        .poll(() => spaces.created.map(({ path }) => path.replace(/space\/[^/]+\//, 'space/{issuer}/')))
+        .toEqual(['/spaces/', '/spaces/', '/space/{issuer}/spaces'])
+      expect(JSON.parse(spaces.created[1].body)).toHaveProperty('coupon', REGISTRATION_CODE)
+      expect(JSON.parse(spaces.created[2].body)).not.toHaveProperty('coupon')
     })
 
     await test.step('the editor fits a phone screen', async () => {
@@ -180,6 +215,9 @@ test('creates an issuer key, issues a batch, and signs in again', async ({ page 
       await page.reload()
       await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
     })
+
+    // Through everything above, the code went to the server in one request
+    expect(spaces.withCode).toEqual(['POST /spaces/'])
   } finally {
     if (noise.length) {
       console.log(`--- browser noise ---\n${noise.join('\n')}`)
