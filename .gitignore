@@ -4,10 +4,15 @@ node_modules/
 # Build output
 dist/
 
-# Environment files
+# Environment files (.env.example and .env.production are committed: they
+# hold public service URLs only)
 .env
 .env.local
 .env.*.local
+
+# Playwright
+test-results/
+playwright-report/
 
 # OS files
 .DS_Store

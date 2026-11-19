@@ -2,13 +2,13 @@ import type { BatchIssuerAdapter } from '../adapter'
 import { SpaceCreationError } from './errors'
 import type { Batch } from './types'
 
-// Every batch lives in its own WAS space (a Space whose type array carries
-// "BatchSpace"; the wallet reports it as type 'batch'). The batch document
+// Every batch lives in its own PWS space (a Space whose type array carries
+// "BatchSpace"; the adapter reports it as type 'batch'). The batch document
 // itself is one JSON resource inside that space.
 const COLLECTION_ID = 'batch'
 const RESOURCE_ID = 'batch.json'
 
-// Splits a space URL into the WAS server base URL and the space id.
+// Splits a space URL into the PWS server base URL and the space id.
 export function parseSpaceUrl(spaceUrl: string): { serverUrl: string; spaceId: string } | null {
   const match = spaceUrl.match(/^(.+)\/space\/([^/?#]+)$/)
   return match ? { serverUrl: match[1], spaceId: match[2] } : null
@@ -58,12 +58,6 @@ export async function saveBatch(adapter: BatchIssuerAdapter, batch: Batch): Prom
   const data = JSON.parse(JSON.stringify(stored))
   await batchCollection(client, spaceUrl).put(RESOURCE_ID, data)
   return stored
-}
-
-export async function loadBatch(adapter: BatchIssuerAdapter, spaceUrl: string): Promise<Batch | null> {
-  const client = await getClient(adapter)
-  const data = await batchCollection(client, spaceUrl).get(RESOURCE_ID)
-  return data && !(data instanceof Blob) ? (data as unknown as Batch) : null
 }
 
 // The activity log the notify/collection back end keeps in the batch space
