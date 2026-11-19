@@ -1,60 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { BatchIssuerAdapter } from './adapter'
 import type { Batch } from './lib/types'
-import { loadBatch } from './lib/batches'
-import { describeFailure } from './lib/errors'
 import BatchListPage from './components/BatchListPage'
 import BatchEditor from './components/BatchEditor'
 
-type View = { page: 'loading' } | { page: 'list'; error?: string } | { page: 'edit'; batch: Batch }
+type View = { page: 'list' } | { page: 'edit'; batch: Batch }
 
-// The batch issuer panel: create and edit batches of credentials to issue.
-// The host (the wallet) supplies session, spaces API, and templates API via
-// the adapter and mounts this inside its own chrome. When the host passes
-// initialSpaceUrl (e.g. the user chose a batch space in the spaces view), the
-// panel opens straight into that space's batch. If the load fails, it falls
-// back to the list and says there that the batch could not be opened; a space
-// that holds no batch falls back to the list without a message.
-export default function BatchIssuerPanel({
-  adapter,
-  initialSpaceUrl,
-}: {
-  adapter: BatchIssuerAdapter
-  initialSpaceUrl?: string
-}) {
-  const [view, setView] = useState<View>(initialSpaceUrl ? { page: 'loading' } : { page: 'list' })
+// The batch screens: the list of batches, and the editor for one. The app
+// supplies the session, the spaces API and the service calls via the adapter
+// and renders this under its page header.
+export default function BatchIssuerPanel({ adapter }: { adapter: BatchIssuerAdapter }) {
+  const [view, setView] = useState<View>({ page: 'list' })
 
-  useEffect(() => {
-    if (!initialSpaceUrl) {
-      return
-    }
-    let cancelled = false
-    loadBatch(adapter, initialSpaceUrl)
-      .then((batch) => {
-        if (!cancelled) {
-          // The space it came from is authoritative, as in listBatches
-          setView(batch ? { page: 'edit', batch: { ...batch, spaceUrl: initialSpaceUrl } } : { page: 'list' })
-        }
-      })
-      .catch((err) => {
-        const error = describeFailure('open-batch', err)
-        if (!cancelled) {
-          setView({ page: 'list', error })
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [adapter, initialSpaceUrl])
-
-  return view.page === 'loading' ? (
-    <p className="text-sm text-slate-500">Loading batch…</p>
-  ) : view.page === 'list' ? (
-    <BatchListPage
-      adapter={adapter}
-      openError={view.error}
-      onEdit={(batch) => setView({ page: 'edit', batch })}
-    />
+  return view.page === 'list' ? (
+    <BatchListPage adapter={adapter} onEdit={(batch) => setView({ page: 'edit', batch })} />
   ) : (
     <BatchEditor
       adapter={adapter}

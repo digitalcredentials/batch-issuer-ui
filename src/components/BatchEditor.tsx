@@ -177,7 +177,7 @@ export default function BatchEditor({
     setSaving(true)
     setError(null)
     try {
-      // The first save creates and registers the batch's own WAS space.
+      // The first save creates and registers the batch's own PWS space.
       const stored = await saveBatch(adapter, batch)
       setBatch(stored)
       setSavedAt(stored.updatedAt)
@@ -282,11 +282,11 @@ export default function BatchEditor({
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">
           {batch.name.trim() ? batch.name : 'New batch'}
         </h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {savedAt && <span className="text-sm text-green-700">Saved</span>}
           <button
             type="button"

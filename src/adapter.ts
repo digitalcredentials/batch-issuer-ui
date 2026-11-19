@@ -1,4 +1,4 @@
-import type { WasClient } from '@interop/was-client'
+import type { PwsClient } from '@interop/pws-client'
 import type { Batch } from './lib/types'
 
 // The outcome of a notify run: how many recipients were emailed, which rows
@@ -11,7 +11,8 @@ export interface NotifyResult {
   recipientRows?: Record<string, number>
 }
 
-// A WAS space as the wallet's spaces API reports it.
+// A space of the signed-in issuer's, as the batch screens need to know it.
+// `type` is 'batch' for a batch space.
 export interface SpaceInfo {
   url: string
   type: string
@@ -19,16 +20,17 @@ export interface SpaceInfo {
   createdAt?: string
 }
 
-// Everything the panel needs from its host (the wallet). The panel has no
-// knowledge of localStorage, env vars, or the login flow — the host supplies
-// the authenticated WAS client and the spaces API, and hears back when a call
-// comes back unauthorized.
+// Everything the batch screens need from the app around them
+// (lib/issuerAdapter.ts builds it from the signed-in issuer's key). The
+// screens have no knowledge of sessionStorage, env vars, or the sign-in: they
+// are handed the signed PWS client and the spaces API, and say so when they
+// find the session gone.
 export interface BatchIssuerAdapter {
-  // The wallet's session WAS client; null when the session is gone.
-  getSession(): Promise<{ client: WasClient } | null>
-  // The wallet back end's /spaces API.
+  // The signed-in issuer's PWS client; null when the session is gone.
+  getSession(): Promise<{ client: PwsClient } | null>
+  // The PWS server's spaces, as the signed-in issuer.
   spaces: {
-    // Creates a new WAS space of the given type; resolves to its space URL.
+    // Creates a new space of the given type; resolves to its space URL.
     create(type: 'batch', name: string): Promise<string>
     list(): Promise<SpaceInfo[]>
     remove(spaceUrl: string): Promise<void>
@@ -41,6 +43,6 @@ export interface BatchIssuerAdapter {
   revokeStatus(revocationToken: string): Promise<void>
   // Base URL of the credential-templates API (GET {base}/templates).
   templatesApiBase: string
-  // Called when a WAS or spaces call is rejected as unauthorized.
+  // Called when a screen finds there is no session to act with.
   onUnauthorized(): void
 }

@@ -1,16 +1,14 @@
-// Server calls fail with whatever threw: the wallet's signed-request HTTP
-// client, the WAS client (WasError), or a plain Error. None of those messages
-// mean anything to the person running a batch, and some carry a URL and a
-// status code. So every failed request is translated here, in the editor
-// where it is shown, rather than in the wallet's adapter — every host then
-// gets the same sentences.
+// Server calls fail with whatever threw: the signed-request HTTP client, the
+// PWS client (PwsError), or a plain Error. None of those messages mean
+// anything to the person running a batch, and some carry a URL and a status
+// code. So every failed request is translated here into a sentence saying
+// what failed and what the person can do.
 
 // What the person was doing when the request failed; the sentence shown names
 // the action.
 export type RequestAction =
   | 'load-batches'
   | 'load-templates'
-  | 'open-batch'
   | 'save'
   | 'notify'
   | 'resend'
@@ -20,7 +18,6 @@ export type RequestAction =
 const FAILED: Record<RequestAction, string> = {
   'load-batches': 'The batches could not be loaded.',
   'load-templates': 'The templates could not be loaded.',
-  'open-batch': 'The batch could not be opened.',
   save: 'The batch could not be saved.',
   notify: 'The recipients could not be notified.',
   resend: 'The notification could not be resent.',
@@ -28,14 +25,14 @@ const FAILED: Record<RequestAction, string> = {
   delete: 'The batch could not be deleted.',
 }
 
-// The storage server's problem type for an account that holds no coupon to
-// create a space with.
+// The PWS server's problem type for a space creation whose coupon (the
+// registration code) it does not accept.
 const COUPON_REQUIRED = 'https://github.com/digitalcredentials/was-server-aws#coupon-required'
 
-// Covers an account never set up for storage and one whose allowance has run
-// out or expired: the server answers both with the same coupon-required 403.
+// Covers a code that was never valid and one that has run out or expired:
+// the server answers both with the same coupon-required 403.
 const NO_BATCH_STORAGE =
-  "This account can't create batch storage right now. Contact whoever runs this deployment."
+  "The registration code was not accepted, so the batch's storage could not be created. Enter a current code under Registration code, then save again."
 
 const SESSION_ENDED = 'Your session has ended. Sign in again, then try once more.'
 
@@ -49,9 +46,9 @@ export class SpaceCreationError extends Error {
   }
 }
 
-// The HTTP status and problem type as read off an unknown error. The wallet's
+// The HTTP status and problem type as read off an unknown error. The
 // signed-request client puts the status on the error itself and the server's
-// parsed problem body on `data`; WasError carries `status` and `type` as its
+// parsed problem body on `data`; PwsError carries `status` and `type` as its
 // own properties. Any of it may be missing, so read it all defensively.
 function readProblem(error: unknown): { status?: number; type?: string; message?: string } {
   if (typeof error !== 'object' || error === null) {
@@ -73,12 +70,19 @@ function readProblem(error: unknown): { status?: number; type?: string; message?
   }
 }
 
-// A signed-out or expired session: the wallet's adapter throws
-// Error('UNAUTHORIZED'), this package throws 'Not logged in.' when there is no
-// session, and a server may answer 401. Retrying cannot help; signing in can.
+// A session that is gone: the adapter throws Error('UNAUTHORIZED') and the
+// batch screens throw 'Not logged in.' when there is no session, and a server
+// may answer 401. Retrying cannot help; signing in can.
 function isSessionEnded(error: unknown): boolean {
   const { status, message } = readProblem(error)
   return status === 401 || message === 'UNAUTHORIZED' || message === 'Not logged in.'
+}
+
+// True when a space creation was refused over its registration code: the PWS
+// server's coupon-required 403. A bare 403 there means the same thing.
+export function registrationCodeRefused(error: unknown): boolean {
+  const { status, type } = readProblem(error)
+  return status === 403 || type === COUPON_REQUIRED
 }
 
 // Turns a failed request into a sentence saying what failed and what the
@@ -89,15 +93,8 @@ export function describeFailure(action: RequestAction, error: unknown): string {
   if (isSessionEnded(cause)) {
     return SESSION_ENDED
   }
-  if (error instanceof SpaceCreationError) {
-    const { status, type } = readProblem(cause)
-    // Creating the batch's space is refused with 403 on a deployment where
-    // the account is not set up to create storage. The coupon-required
-    // problem type confirms that when the server sent a body; a bare 403
-    // here means the same thing.
-    if (status === 403 || type === COUPON_REQUIRED) {
-      return NO_BATCH_STORAGE
-    }
+  if (error instanceof SpaceCreationError && registrationCodeRefused(cause)) {
+    return NO_BATCH_STORAGE
   }
   return `${FAILED[action]} Please try again.`
 }

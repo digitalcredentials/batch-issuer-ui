@@ -7,7 +7,7 @@ export interface BatchIssuerDetails {
 
 // One batch of credentials-to-be: the metadata entered in the form plus the
 // recipient rows parsed from (and edited after) the CSV upload. Every batch
-// lives in its own WAS space (registered with type 'batch'), stored as the
+// lives in its own PWS space (a Space typed BatchSpace), stored as the
 // JSON resource batch/batch.json.
 export interface Batch {
   id: string
